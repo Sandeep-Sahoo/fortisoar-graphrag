@@ -1,0 +1,734 @@
+{
+  "type": "workflow_collections",
+  "data": [
+    {
+      "@type": "WorkflowCollection",
+      "name": "SOC - Cloud AWS",
+      "description": "AWS threat detection and response",
+      "workflows": [
+        {
+          "@type": "Workflow",
+          "uuid": "f1e35535-dcae-590f-8ad3-480ceece873d",
+          "name": "AWS GuardDuty Finding Triage",
+          "description": "Enriches GuardDuty findings and routes credential compromise to key disablement and instance compromise to EC2 isolation.",
+          "isActive": true,
+          "recordTags": [
+            "AWS",
+            "GuardDuty"
+          ],
+          "triggerStep": "/api/3/workflow_steps/064f1277-48e6-5964-89bc-db84f2e0a55c",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "064f1277-48e6-5964-89bc-db84f2e0a55c",
+              "name": "Start",
+              "arguments": {
+                "resource": "alerts",
+                "resources": [
+                  "alerts"
+                ],
+                "fieldbasedtrigger": {
+                  "filters": [
+                    {
+                      "field": "source",
+                      "value": "AWS GuardDuty"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "8aa16e2c-1d28-5316-ab59-9fadad1e06b9",
+              "name": "Get Finding Details",
+              "arguments": {
+                "connector": "aws-guardduty",
+                "operation": "get_findings",
+                "version": "1.1.0",
+                "params": {
+                  "finding_ids": [
+                    "{{vars.input.records[0].sourceId}}"
+                  ]
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "259a0a95-4e2b-5bc0-8880-46852edae5a2",
+              "name": "High Severity?",
+              "arguments": {
+                "conditions": [
+                  {
+                    "option": "High",
+                    "condition": "{{vars.steps.Get_Finding_Details.data.severity >= 7}}"
+                  }
+                ]
+              },
+              "stepType": {
+                "name": "Decision"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "77f27f22-28c8-5f27-a7f2-039da0dd388b",
+              "name": "Finding Type?",
+              "arguments": {
+                "conditions": [
+                  {
+                    "option": "Credentials",
+                    "condition": "{{'IAMUser' in vars.steps.Get_Finding_Details.data.type}}"
+                  },
+                  {
+                    "option": "Instance",
+                    "condition": "{{'EC2' in vars.steps.Get_Finding_Details.data.type}}"
+                  }
+                ]
+              },
+              "stepType": {
+                "name": "Decision"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "c1392e26-d912-53f1-9a35-eb225430c608",
+              "name": "Disable Leaked Key",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/c22ee81e-4232-5bdc-9c23-a5ac741e6a1b",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "caf1972b-5804-51f8-b4ea-59779c29686a",
+              "name": "Isolate Instance",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/6d0f92e4-488f-5661-9e2c-67aba7947a0f",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/064f1277-48e6-5964-89bc-db84f2e0a55c",
+              "targetStep": "/api/3/workflow_steps/8aa16e2c-1d28-5316-ab59-9fadad1e06b9"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/8aa16e2c-1d28-5316-ab59-9fadad1e06b9",
+              "targetStep": "/api/3/workflow_steps/259a0a95-4e2b-5bc0-8880-46852edae5a2"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/259a0a95-4e2b-5bc0-8880-46852edae5a2",
+              "targetStep": "/api/3/workflow_steps/77f27f22-28c8-5f27-a7f2-039da0dd388b",
+              "label": "High"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/77f27f22-28c8-5f27-a7f2-039da0dd388b",
+              "targetStep": "/api/3/workflow_steps/c1392e26-d912-53f1-9a35-eb225430c608",
+              "label": "Credentials"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/c1392e26-d912-53f1-9a35-eb225430c608",
+              "targetStep": "/api/3/workflow_steps/caf1972b-5804-51f8-b4ea-59779c29686a"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "6d0f92e4-488f-5661-9e2c-67aba7947a0f",
+          "name": "AWS - Isolate EC2 Instance",
+          "description": "Snapshots all volumes for forensics, swaps the instance into the quarantine security group and tags it, after approval for production.",
+          "isActive": true,
+          "recordTags": [
+            "AWS",
+            "EC2",
+            "Containment",
+            "Subroutine"
+          ],
+          "triggerStep": "/api/3/workflow_steps/713590a1-9d99-5c85-bf76-923cd0d18f95",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "713590a1-9d99-5c85-bf76-923cd0d18f95",
+              "name": "Start",
+              "arguments": {
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records}}"
+                  }
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "28b2ac3c-329a-546b-9272-a187e2ddbdc2",
+              "name": "Approve Isolation",
+              "arguments": {
+                "title": "Isolate {{vars.input.records[0].instanceId}}?",
+                "owner": "Cloud On-Call"
+              },
+              "stepType": {
+                "name": "Manual Input"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "a9910f66-8f10-5042-8d3e-b889094ad30d",
+              "name": "Describe Instance",
+              "arguments": {
+                "connector": "aws-ec2",
+                "operation": "describe_instance",
+                "version": "2.0.0",
+                "params": {
+                  "instance_id": "{{vars.input.records[0].instanceId}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "54ca6a86-8b49-567b-b8af-04334c0e6a00",
+              "name": "Snapshot Volumes",
+              "arguments": {
+                "connector": "aws-ec2",
+                "operation": "create_snapshot",
+                "version": "2.0.0",
+                "params": {
+                  "volume_ids": "{{vars.steps.Describe_Instance.data.volumes}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "120ec8b2-1845-5c54-b5cd-b7b942a491b2",
+              "name": "Apply Quarantine Security Group",
+              "arguments": {
+                "connector": "aws-ec2",
+                "operation": "modify_instance_security_groups",
+                "version": "2.0.0",
+                "params": {
+                  "instance_id": "{{vars.input.records[0].instanceId}}",
+                  "groups": [
+                    "sg-quarantine"
+                  ]
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "d218d939-6cde-5448-a8b8-91dde8c2e2fe",
+              "name": "Tag Instance",
+              "arguments": {
+                "connector": "aws-ec2",
+                "operation": "tag_instance",
+                "version": "2.0.0",
+                "params": {
+                  "tags": {
+                    "SecurityStatus": "Quarantined"
+                  }
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "02706363-af2f-5183-9da3-d2c6edc20bcc",
+              "name": "Notify On-Call",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/4cf2d919-9337-513b-b3a1-f77e28d3bb86",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/713590a1-9d99-5c85-bf76-923cd0d18f95",
+              "targetStep": "/api/3/workflow_steps/28b2ac3c-329a-546b-9272-a187e2ddbdc2"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/28b2ac3c-329a-546b-9272-a187e2ddbdc2",
+              "targetStep": "/api/3/workflow_steps/a9910f66-8f10-5042-8d3e-b889094ad30d"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/a9910f66-8f10-5042-8d3e-b889094ad30d",
+              "targetStep": "/api/3/workflow_steps/54ca6a86-8b49-567b-b8af-04334c0e6a00"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/54ca6a86-8b49-567b-b8af-04334c0e6a00",
+              "targetStep": "/api/3/workflow_steps/120ec8b2-1845-5c54-b5cd-b7b942a491b2"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/120ec8b2-1845-5c54-b5cd-b7b942a491b2",
+              "targetStep": "/api/3/workflow_steps/d218d939-6cde-5448-a8b8-91dde8c2e2fe"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/d218d939-6cde-5448-a8b8-91dde8c2e2fe",
+              "targetStep": "/api/3/workflow_steps/02706363-af2f-5183-9da3-d2c6edc20bcc"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "c22ee81e-4232-5bdc-9c23-a5ac741e6a1b",
+          "name": "AWS - Disable Access Key",
+          "description": "Deactivates a leaked IAM access key after approval, attaches a deny-all policy and emails the key owner.",
+          "isActive": true,
+          "recordTags": [
+            "AWS",
+            "IAM",
+            "Containment",
+            "Subroutine"
+          ],
+          "triggerStep": "/api/3/workflow_steps/0cf14433-a487-53a4-aa0e-dd31e328c7c9",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "0cf14433-a487-53a4-aa0e-dd31e328c7c9",
+              "name": "Start",
+              "arguments": {
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records}}"
+                  }
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "d5d1b6c5-27ec-506f-ab1b-0a678563c956",
+              "name": "List Access Keys",
+              "arguments": {
+                "connector": "aws-iam",
+                "operation": "list_access_keys",
+                "version": "1.5.0",
+                "params": {
+                  "user_name": "{{vars.input.records[0].userName}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "1dfe1d29-bb1e-59c4-b2ba-217e48fe83fb",
+              "name": "Approve Key Disable",
+              "arguments": {
+                "title": "Deactivate key {{vars.input.records[0].accessKeyId}}?",
+                "owner": "Cloud On-Call"
+              },
+              "stepType": {
+                "name": "Manual Input"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "b1eef6dc-2181-54e3-8d6d-5b754d2ee38d",
+              "name": "Deactivate Key",
+              "arguments": {
+                "connector": "aws-iam",
+                "operation": "update_access_key",
+                "version": "1.5.0",
+                "params": {
+                  "access_key_id": "{{vars.input.records[0].accessKeyId}}",
+                  "status": "Inactive"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "6e2cc0c3-fdd7-5e09-bf94-969cc1b50b62",
+              "name": "Attach Deny-All Policy",
+              "arguments": {
+                "connector": "aws-iam",
+                "operation": "attach_user_policy",
+                "version": "1.5.0",
+                "params": {
+                  "policy_arn": "arn:aws:iam::123456789012:policy/DenyAll"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "26807e0d-8732-51ce-831c-c4615e29d70f",
+              "name": "Email Key Owner",
+              "arguments": {
+                "connector": "smtp",
+                "operation": "send_email",
+                "version": "2.0.0",
+                "params": {
+                  "to": "{{vars.input.records[0].ownerEmail}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/0cf14433-a487-53a4-aa0e-dd31e328c7c9",
+              "targetStep": "/api/3/workflow_steps/d5d1b6c5-27ec-506f-ab1b-0a678563c956"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/d5d1b6c5-27ec-506f-ab1b-0a678563c956",
+              "targetStep": "/api/3/workflow_steps/1dfe1d29-bb1e-59c4-b2ba-217e48fe83fb"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/1dfe1d29-bb1e-59c4-b2ba-217e48fe83fb",
+              "targetStep": "/api/3/workflow_steps/b1eef6dc-2181-54e3-8d6d-5b754d2ee38d"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/b1eef6dc-2181-54e3-8d6d-5b754d2ee38d",
+              "targetStep": "/api/3/workflow_steps/6e2cc0c3-fdd7-5e09-bf94-969cc1b50b62"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/6e2cc0c3-fdd7-5e09-bf94-969cc1b50b62",
+              "targetStep": "/api/3/workflow_steps/26807e0d-8732-51ce-831c-c4615e29d70f"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "36b55133-8ea8-55f6-b28f-abf6fdbbda91",
+          "name": "AWS - Public S3 Bucket Remediation",
+          "description": "Re-enables S3 public access block on unexpectedly public buckets (except allow-listed website buckets) and tickets the owner.",
+          "isActive": true,
+          "recordTags": [
+            "AWS",
+            "S3"
+          ],
+          "triggerStep": "/api/3/workflow_steps/41439e42-23a7-5bd6-be94-f5cd14cd7e32",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "41439e42-23a7-5bd6-be94-f5cd14cd7e32",
+              "name": "Start",
+              "arguments": {
+                "resource": "alerts",
+                "resources": [
+                  "alerts"
+                ],
+                "fieldbasedtrigger": {
+                  "filters": [
+                    {
+                      "field": "type",
+                      "value": "S3 Public Access"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "cf06cf04-7271-5c61-820c-89ffd3a2a219",
+              "name": "Allow-Listed Bucket?",
+              "arguments": {
+                "conditions": [
+                  {
+                    "option": "Allowed",
+                    "condition": "{{vars.input.records[0].bucket in ['customer-portal-static']}}"
+                  }
+                ]
+              },
+              "stepType": {
+                "name": "Decision"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "06ab38d9-4f24-5e61-b136-f320786eee19",
+              "name": "Get Bucket Policy",
+              "arguments": {
+                "connector": "aws-s3",
+                "operation": "get_bucket_policy",
+                "version": "1.3.0",
+                "params": {
+                  "bucket": "{{vars.input.records[0].bucket}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "4524a2e8-36f8-56a8-b63d-9dd32061635e",
+              "name": "Enable Public Access Block",
+              "arguments": {
+                "connector": "aws-s3",
+                "operation": "put_public_access_block",
+                "version": "1.3.0",
+                "params": {
+                  "bucket": "{{vars.input.records[0].bucket}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "875a1935-3854-5f4c-a792-1b5a4380e159",
+              "name": "Mark Remediated",
+              "arguments": {
+                "status": "Remediated"
+              },
+              "stepType": {
+                "name": "Update Record"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "8009632c-2dcc-55b8-8e77-14d310466829",
+              "name": "Ticket Bucket Owner",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/60f0b79e-65c1-5934-ab18-7b3c7218bdb5",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/41439e42-23a7-5bd6-be94-f5cd14cd7e32",
+              "targetStep": "/api/3/workflow_steps/cf06cf04-7271-5c61-820c-89ffd3a2a219"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/cf06cf04-7271-5c61-820c-89ffd3a2a219",
+              "targetStep": "/api/3/workflow_steps/06ab38d9-4f24-5e61-b136-f320786eee19"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/06ab38d9-4f24-5e61-b136-f320786eee19",
+              "targetStep": "/api/3/workflow_steps/4524a2e8-36f8-56a8-b63d-9dd32061635e"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/4524a2e8-36f8-56a8-b63d-9dd32061635e",
+              "targetStep": "/api/3/workflow_steps/875a1935-3854-5f4c-a792-1b5a4380e159"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/875a1935-3854-5f4c-a792-1b5a4380e159",
+              "targetStep": "/api/3/workflow_steps/8009632c-2dcc-55b8-8e77-14d310466829"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "ba67f112-6376-50b6-8919-3d0a71f789c3",
+          "name": "AWS - CloudTrail Disabled Response",
+          "description": "Restarts CloudTrail logging immediately, finds who stopped it and contains that principal's keys.",
+          "isActive": true,
+          "recordTags": [
+            "AWS",
+            "CloudTrail"
+          ],
+          "triggerStep": "/api/3/workflow_steps/131e0d44-b7b2-5da4-8d9d-868034e1e858",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "131e0d44-b7b2-5da4-8d9d-868034e1e858",
+              "name": "Start",
+              "arguments": {
+                "resource": "alerts",
+                "resources": [
+                  "alerts"
+                ],
+                "fieldbasedtrigger": {
+                  "filters": [
+                    {
+                      "field": "type",
+                      "value": "CloudTrail Disabled"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "9057086d-5ea9-5c85-bb29-02a4217f1936",
+              "name": "Check Trail Status",
+              "arguments": {
+                "connector": "aws-cloudtrail",
+                "operation": "get_trail_status",
+                "version": "1.2.0",
+                "params": {
+                  "trail": "org-trail"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "4042c894-17a3-548d-a1b7-99d4d3618193",
+              "name": "Restart Logging",
+              "arguments": {
+                "connector": "aws-cloudtrail",
+                "operation": "start_logging",
+                "version": "1.2.0",
+                "params": {
+                  "trail": "org-trail",
+                  "aws_access_key_id": "AKIAIOSFODNN7EXAMPLE",
+                  "aws_secret_access_key": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "90517734-e09b-53e6-aa99-228fc19c5788",
+              "name": "Find Who Stopped It",
+              "arguments": {
+                "connector": "aws-cloudtrail",
+                "operation": "lookup_events",
+                "version": "1.2.0",
+                "params": {
+                  "event_name": "StopLogging"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "161c99c9-7e64-5769-ae9d-107b6616684e",
+              "name": "Disable Their Key",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/c22ee81e-4232-5bdc-9c23-a5ac741e6a1b",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "5bdc4072-82ff-5c6a-ba46-224f9b2e93e2",
+              "name": "Escalate to On-Call",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/4cf2d919-9337-513b-b3a1-f77e28d3bb86",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/131e0d44-b7b2-5da4-8d9d-868034e1e858",
+              "targetStep": "/api/3/workflow_steps/9057086d-5ea9-5c85-bb29-02a4217f1936"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/9057086d-5ea9-5c85-bb29-02a4217f1936",
+              "targetStep": "/api/3/workflow_steps/4042c894-17a3-548d-a1b7-99d4d3618193"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/4042c894-17a3-548d-a1b7-99d4d3618193",
+              "targetStep": "/api/3/workflow_steps/90517734-e09b-53e6-aa99-228fc19c5788"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/90517734-e09b-53e6-aa99-228fc19c5788",
+              "targetStep": "/api/3/workflow_steps/161c99c9-7e64-5769-ae9d-107b6616684e"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/161c99c9-7e64-5769-ae9d-107b6616684e",
+              "targetStep": "/api/3/workflow_steps/5bdc4072-82ff-5c6a-ba46-224f9b2e93e2"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "ed574e63-ffef-5f8f-b375-3acb42f69e27",
+          "name": "AWS - Root Account Usage Alert",
+          "description": "Looks up root sign-in events and pages on-call unless the account owner confirms the login within 15 minutes.",
+          "isActive": true,
+          "recordTags": [
+            "AWS",
+            "IAM"
+          ],
+          "triggerStep": "/api/3/workflow_steps/468e949b-614e-5227-9c35-b31d4e083f94",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "468e949b-614e-5227-9c35-b31d4e083f94",
+              "name": "Start",
+              "arguments": {
+                "resource": "alerts",
+                "resources": [
+                  "alerts"
+                ],
+                "fieldbasedtrigger": {
+                  "filters": [
+                    {
+                      "field": "type",
+                      "value": "Root Login"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "6659b6ed-7c33-5ce5-abce-39834f3a7538",
+              "name": "Lookup Root Sign-ins",
+              "arguments": {
+                "connector": "aws-cloudtrail",
+                "operation": "lookup_events",
+                "version": "1.2.0",
+                "params": {
+                  "event_name": "ConsoleLogin",
+                  "user_name": "root"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "43e49140-be13-54ef-9c48-0aed9494fadb",
+              "name": "Owner Confirms Login",
+              "arguments": {
+                "title": "Did you sign in as root to {{vars.input.records[0].accountName}}?",
+                "owner": "Account Owner",
+                "timeout_hours": 0.25
+              },
+              "stepType": {
+                "name": "Manual Input"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "eb049cc7-cbc9-5736-ac17-1e33b7a7fb7a",
+              "name": "Confirmed?",
+              "arguments": {
+                "conditions": [
+                  {
+                    "option": "Not confirmed",
+                    "condition": "{{vars.steps.Owner_Confirms_Login.input.answer != 'Yes'}}"
+                  }
+                ]
+              },
+              "stepType": {
+                "name": "Decision"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "ceb80e4c-e234-5002-8229-bdfe8959aef7",
+              "name": "Page On-Call",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/4cf2d919-9337-513b-b3a1-f77e28d3bb86",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/468e949b-614e-5227-9c35-b31d4e083f94",
+              "targetStep": "/api/3/workflow_steps/6659b6ed-7c33-5ce5-abce-39834f3a7538"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/6659b6ed-7c33-5ce5-abce-39834f3a7538",
+              "targetStep": "/api/3/workflow_steps/43e49140-be13-54ef-9c48-0aed9494fadb"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/43e49140-be13-54ef-9c48-0aed9494fadb",
+              "targetStep": "/api/3/workflow_steps/eb049cc7-cbc9-5736-ac17-1e33b7a7fb7a"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/eb049cc7-cbc9-5736-ac17-1e33b7a7fb7a",
+              "targetStep": "/api/3/workflow_steps/ceb80e4c-e234-5002-8229-bdfe8959aef7",
+              "label": "Not confirmed"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

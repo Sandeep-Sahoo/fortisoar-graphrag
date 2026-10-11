@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>Sign in · FortiSOAR Graph RAG</title>
+<style>
+  :root { --bg: #f7f7f5; --panel: #fff; --text: #1f1f1d; --muted: #6b6a65; --border: #e2e0d8;
+          --accent: #534AB7; --accent-bg: #EEEDFE; --danger: #A32D2D; --c1: #7F77DD; --c2: #1D9E75; --c3: #EF9F27; --c4: #378ADD; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1c1c1a; --panel: #262624; --text: #ecebe6; --muted: #a3a29c; --border: #3a3a37;
+            --accent: #AFA9EC; --accent-bg: #2f2b55; --danger: #F09595; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--text);
+         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 16px; overflow: hidden; }
+  .orbit { position: fixed; inset: 0; pointer-events: none; display: grid; place-items: center; }
+  .orbit span { position: absolute; border: 1px dashed var(--border); border-radius: 50%; }
+  .orbit i { position: absolute; width: 12px; height: 12px; border-radius: 50%; top: -6px; left: calc(50% - 6px); }
+  .orbit span:nth-child(1) { width: 420px; height: 420px; animation: spin 40s linear infinite; }
+  .orbit span:nth-child(2) { width: 640px; height: 640px; animation: spin 70s linear infinite reverse; }
+  .orbit span:nth-child(3) { width: 880px; height: 880px; animation: spin 110s linear infinite; }
+  .orbit span:nth-child(1) i { background: var(--c1); } .orbit span:nth-child(2) i { background: var(--c2); }
+  .orbit span:nth-child(3) i { background: var(--c3); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  form { position: relative; width: 100%; max-width: 360px; background: var(--panel); border: 1px solid var(--border);
+         border-radius: 16px; padding: 28px 26px 22px; display: flex; flex-direction: column; gap: 14px; }
+  .logo { width: 54px; height: 54px; border-radius: 50%; margin: 0 auto 2px; display: grid; place-items: center;
+          background: conic-gradient(var(--c1) 0 25%, var(--c2) 0 50%, var(--c3) 0 75%, var(--c4) 0); }
+  .logo::after { content: ""; width: 30px; height: 30px; border-radius: 50%; background: var(--panel); }
+  h1 { font-size: 18px; font-weight: 600; margin: 0; text-align: center; }
+  .sub { color: var(--muted); font-size: 13px; text-align: center; margin-top: -8px; }
+  label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
+  input { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+  input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  button { padding: 10px; border-radius: 10px; border: 0; background: var(--accent); color: var(--panel); font: inherit; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .6; cursor: wait; }
+  .error { color: var(--danger); font-size: 13px; min-height: 18px; }
+  .hint { color: var(--muted); font-size: 12px; text-align: center; }
+  @media (prefers-reduced-motion: reduce) { .orbit span { animation: none; } }
+</style>
+</head>
+<body>
+<div class="orbit" aria-hidden="true"><span><i></i></span><span><i></i></span><span><i></i></span></div>
+<form id="form" novalidate>
+  <div class="logo" aria-hidden="true"></div>
+  <h1>FortiSOAR Graph RAG</h1>
+  <div class="sub">Sign in to explore your playbooks</div>
+  <label>Username <input id="username" name="username" autocomplete="username" autofocus></label>
+  <label>Password <input id="password" name="password" type="password" autocomplete="current-password"></label>
+  <div class="error" id="error" role="alert"></div>
+  <button id="submit" type="submit">Sign in</button>
+  <div class="hint">Local default is admin / admin. Change it with APP_USERNAME and APP_PASSWORD in .env.</div>
+</form>
+<script>
+const $ = id => document.getElementById(id);
+["username", "password"].forEach(id => $(id).addEventListener("input", () => { $("error").textContent = ""; }));
+$("form").addEventListener("submit", async e => {
+  e.preventDefault();
+  const username = $("username").value.trim(), password = $("password").value;
+  if (!username || !password) { $("error").textContent = "Enter your username and password."; return; }
+  $("submit").disabled = true;
+  try {
+    const res = await fetch("/auth/login", { method: "POST", headers: { "Content-Type": "application/json" },
+                                             body: JSON.stringify({ username, password }) });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) { $("error").textContent = body.detail || "Sign-in failed."; $("password").select(); return; }
+    location.replace("/#home");
+  } catch { $("error").textContent = "Can't reach the server."; }
+  finally { $("submit").disabled = false; }
+});
+</script>
+</body>
+</html>

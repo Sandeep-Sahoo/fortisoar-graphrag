@@ -1,0 +1,298 @@
+{
+  "type": "workflow_collections",
+  "data": [
+    {
+      "@type": "WorkflowCollection",
+      "name": "SOC - Identity",
+      "description": "Identity and access threats",
+      "workflows": [
+        {
+          "@type": "Workflow",
+          "uuid": "7fa8593f-10df-5652-af5a-603cb7135545",
+          "name": "Identity - Impossible Travel Triage",
+          "description": "Checks Entra ID sign-in logs and IP reputation for impossible-travel alerts; disables the account on high risk.",
+          "isActive": true,
+          "recordTags": [
+            "Identity",
+            "Entra ID"
+          ],
+          "triggerStep": "/api/3/workflow_steps/bfb902f1-c291-52ad-9e2a-781af8037c35",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "bfb902f1-c291-52ad-9e2a-781af8037c35",
+              "name": "Start",
+              "arguments": {
+                "resource": "alerts",
+                "resources": [
+                  "alerts"
+                ],
+                "fieldbasedtrigger": {
+                  "filters": [
+                    {
+                      "field": "type",
+                      "value": "Impossible Travel"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "acb5ce77-de89-5694-81ca-48491ebd5a13",
+              "name": "Get Sign-in Logs",
+              "arguments": {
+                "connector": "microsoft-entra-id",
+                "operation": "get_sign_in_logs",
+                "version": "1.4.0",
+                "params": {
+                  "user": "{{vars.input.records[0].userPrincipalName}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "cd8c012f-a2f0-52e7-b612-f18595f626b5",
+              "name": "Check Source IP",
+              "arguments": {
+                "connector": "abuseipdb",
+                "operation": "check_ip",
+                "version": "1.2.0",
+                "params": {
+                  "ip": "{{vars.input.records[0].sourceIp}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "09b8b14b-df66-5ef6-9520-19afd7a6dc01",
+              "name": "High Risk?",
+              "arguments": {
+                "conditions": [
+                  {
+                    "option": "High",
+                    "condition": "{{vars.steps.Check_Source_IP.data.abuseConfidenceScore > 75}}"
+                  }
+                ]
+              },
+              "stepType": {
+                "name": "Decision"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "8beda157-34f7-568c-be7c-cd46cdbbe780",
+              "name": "Disable Account",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/3ec93934-fb2c-59d1-9507-ee5390a74fd1",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/bfb902f1-c291-52ad-9e2a-781af8037c35",
+              "targetStep": "/api/3/workflow_steps/acb5ce77-de89-5694-81ca-48491ebd5a13"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/acb5ce77-de89-5694-81ca-48491ebd5a13",
+              "targetStep": "/api/3/workflow_steps/cd8c012f-a2f0-52e7-b612-f18595f626b5"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/cd8c012f-a2f0-52e7-b612-f18595f626b5",
+              "targetStep": "/api/3/workflow_steps/09b8b14b-df66-5ef6-9520-19afd7a6dc01"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/09b8b14b-df66-5ef6-9520-19afd7a6dc01",
+              "targetStep": "/api/3/workflow_steps/8beda157-34f7-568c-be7c-cd46cdbbe780",
+              "label": "High"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "3ec93934-fb2c-59d1-9507-ee5390a74fd1",
+          "name": "Disable User Account",
+          "description": "Disables an AD account and revokes Entra ID sessions after approval, then notifies the user's manager.",
+          "isActive": true,
+          "recordTags": [
+            "Identity",
+            "Containment",
+            "Subroutine"
+          ],
+          "triggerStep": "/api/3/workflow_steps/cfb14130-a1c8-55e6-a153-9528e4d84a30",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "cfb14130-a1c8-55e6-a153-9528e4d84a30",
+              "name": "Start",
+              "arguments": {
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records}}"
+                  }
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "0bb9faf0-4102-5d9f-a128-4857592b36b6",
+              "name": "Approve Disable",
+              "arguments": {
+                "title": "Disable {{vars.input.records[0].userPrincipalName}}?",
+                "owner": "SOC Tier 2"
+              },
+              "stepType": {
+                "name": "Manual Input"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "9188e4e5-e88f-58d9-a0ef-396ac40d9eb0",
+              "name": "Disable AD User",
+              "arguments": {
+                "connector": "active-directory",
+                "operation": "disable_user",
+                "version": "3.0.1",
+                "params": {
+                  "username": "{{vars.input.records[0].samAccountName}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "9f6d8fcf-394d-5ff1-acdc-18300c2c27ec",
+              "name": "Revoke Sessions",
+              "arguments": {
+                "connector": "microsoft-entra-id",
+                "operation": "revoke_sessions",
+                "version": "1.4.0",
+                "params": {
+                  "user": "{{vars.input.records[0].userPrincipalName}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "e6258969-55c6-544f-98c8-22fe86c8ed55",
+              "name": "Email Manager",
+              "arguments": {
+                "connector": "smtp",
+                "operation": "send_email",
+                "version": "2.0.0",
+                "params": {
+                  "to": "{{vars.input.records[0].managerEmail}}",
+                  "cc": "iam-team@acme-tenant.example"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/cfb14130-a1c8-55e6-a153-9528e4d84a30",
+              "targetStep": "/api/3/workflow_steps/0bb9faf0-4102-5d9f-a128-4857592b36b6"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/0bb9faf0-4102-5d9f-a128-4857592b36b6",
+              "targetStep": "/api/3/workflow_steps/9188e4e5-e88f-58d9-a0ef-396ac40d9eb0"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/9188e4e5-e88f-58d9-a0ef-396ac40d9eb0",
+              "targetStep": "/api/3/workflow_steps/9f6d8fcf-394d-5ff1-acdc-18300c2c27ec"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/9f6d8fcf-394d-5ff1-acdc-18300c2c27ec",
+              "targetStep": "/api/3/workflow_steps/e6258969-55c6-544f-98c8-22fe86c8ed55"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "76ad587f-2284-59cc-8c67-cf9854334cd2",
+          "name": "Brute Force Login Response",
+          "description": "Correlates failed logins in Splunk, scores the source IP and blocks it on the FortiGate when abusive.",
+          "isActive": true,
+          "recordTags": [
+            "Identity",
+            "Brute Force"
+          ],
+          "triggerStep": "/api/3/workflow_steps/28258b29-9c6d-5d20-be0b-1e869b6e69bb",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "28258b29-9c6d-5d20-be0b-1e869b6e69bb",
+              "name": "Start",
+              "arguments": {
+                "resource": "alerts",
+                "resources": [
+                  "alerts"
+                ],
+                "fieldbasedtrigger": {
+                  "filters": [
+                    {
+                      "field": "type",
+                      "value": "Brute Force"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "e2e6b781-cdfc-5beb-a665-f67213505fac",
+              "name": "Count Failed Logins",
+              "arguments": {
+                "connector": "splunk",
+                "operation": "run_search",
+                "version": "2.2.0",
+                "params": {
+                  "query": "index=auth action=failure src={{vars.input.records[0].sourceIp}} | stats count"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "a4209b0b-bbb0-546f-909f-a223455093bd",
+              "name": "Score Source IP",
+              "arguments": {
+                "connector": "abuseipdb",
+                "operation": "check_ip",
+                "version": "1.2.0",
+                "params": {
+                  "ip": "{{vars.input.records[0].sourceIp}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "2c516f4f-f4df-5c99-af89-5417a8ad2ed9",
+              "name": "Block Source IP",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/c6c0351f-e678-55e6-b95e-69fe1a192307",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/28258b29-9c6d-5d20-be0b-1e869b6e69bb",
+              "targetStep": "/api/3/workflow_steps/e2e6b781-cdfc-5beb-a665-f67213505fac"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/e2e6b781-cdfc-5beb-a665-f67213505fac",
+              "targetStep": "/api/3/workflow_steps/a4209b0b-bbb0-546f-909f-a223455093bd"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/a4209b0b-bbb0-546f-909f-a223455093bd",
+              "targetStep": "/api/3/workflow_steps/2c516f4f-f4df-5c99-af89-5417a8ad2ed9"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

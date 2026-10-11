@@ -1,0 +1,2029 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+<title>FortiSOAR Graph RAG</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --sunk: #f1efe8; --text: #1f1f1d; --muted: #6b6a65; --border: #e2e0d8;
+    --accent: #534AB7; --accent-bg: #EEEDFE; --accent-text: #3C3489; --danger: #A32D2D; --ok: #0F6E56;
+    --pb: #7F77DD; --step: #B4B2A9; --op: #5DCAA5; --con: #1D9E75; --mod: #EF9F27; --doc: #D4537E; --coll: #378ADD;
+    --edge: #b4b2a9; --active: #EF9F27; --pack: #D85A30;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #1c1c1a; --panel: #262624; --sunk: #2f2f2c; --text: #ecebe6; --muted: #a3a29c; --border: #3a3a37;
+            --accent: #AFA9EC; --accent-bg: #2f2b55; --accent-text: #CECBF6; --danger: #F09595; --ok: #5DCAA5;
+            --step: #5F5E5A; --edge: #5F5E5A; }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; font: 14px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  button { padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font: inherit; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+  button:disabled { opacity: .55; cursor: not-allowed; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .error { color: var(--danger); font-size: 13px; }
+  .badge { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--accent-bg); color: var(--accent-text); white-space: nowrap; }
+
+  header { height: 50px; display: flex; align-items: center; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 16px; font-weight: 600; margin: 0; white-space: nowrap; flex-shrink: 0; }
+  #mode { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  header button { flex-shrink: 0; }
+  header .spacer { flex: 1; }
+  .layout { display: grid; grid-template-columns: 240px minmax(0, 1.15fr) minmax(0, 1fr); height: calc(100vh - 50px); }
+  .view[hidden] { display: none !important; }
+
+  /* header navigation */
+  .nav { display: inline-flex; border: 1px solid var(--border); border-radius: 999px; padding: 2px; gap: 2px; }
+  .nav a { padding: 4px 14px; border-radius: 999px; color: var(--muted); text-decoration: none; font-size: 13px; }
+  .nav a[aria-current="page"] { background: var(--accent-bg); color: var(--accent-text); font-weight: 600; }
+  #user { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+  /* home view: circular overview of every playbook */
+  #view-home { display: grid; grid-template-columns: minmax(0, 1fr) 330px; height: calc(100vh - 50px); }
+  #home-main { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); }
+  #home-main .bar { display: flex; gap: 6px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--panel); flex-wrap: wrap; }
+  #home-main .bar strong { flex: 1; font-size: 13px; }
+  #home-graph-wrap { position: relative; flex: 1; min-height: 320px; }
+  #cy-home { position: absolute; inset: 0; }
+  #home-side { overflow-y: auto; background: var(--panel); padding: 16px; display: flex; flex-direction: column; gap: 16px; }
+  #home-side h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 8px; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: var(--sunk); border-radius: 12px; padding: 10px 12px; border: 1px solid transparent; text-align: left;
+          font: inherit; color: inherit; cursor: pointer; transition: border-color .15s, transform .15s; }
+  .stat:hover, .stat:focus-visible { border-color: var(--c); transform: translateY(-1px); }
+  .stat span::after { content: " →"; opacity: 0; transition: opacity .15s; }
+  .stat:hover span::after, .stat:focus-visible span::after { opacity: 1; }
+  .stat b { display: block; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  .stat::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: var(--c); margin-right: 5px; }
+  button.big { padding: 11px 14px; font-size: 15px; font-weight: 600; border-radius: 12px; }
+  .notice { font-size: 12px; border: 1px solid var(--active); border-radius: 10px; padding: 8px 10px; background: var(--sunk); }
+  #home-collections { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  #home-collections li { display: flex; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 10px; cursor: pointer; font-size: 13px; }
+  #home-collections li:hover, #home-collections li.on { background: var(--accent-bg); color: var(--accent-text); }
+  #home-collections li span { color: var(--muted); font-size: 12px; white-space: nowrap; }
+  #home-details table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 12px; }
+  #home-details td { border-top: 1px solid var(--border); padding: 3px 6px; vertical-align: top; word-break: break-word; }
+  #home-details td:first-child { color: var(--muted); white-space: nowrap; }
+  #home-details .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .legend-row { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 7px 12px; border-top: 1px solid var(--border); background: var(--panel); }
+  .legend-row .chip { font-size: 11.5px; padding: 2px 9px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; }
+  .legend-row .chip::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--c); border: 1px solid var(--c); }
+  .legend-row .chip[aria-pressed="false"] { opacity: .55; text-decoration: line-through; }
+  .legend-row .chip[aria-pressed="false"]::before { background: transparent; }
+  .legend-row .hint { font-size: 11px; color: var(--muted); margin-left: auto; }
+  @media (max-width: 900px) {
+    #view-home { grid-template-columns: minmax(0, 1fr); grid-template-rows: 65vh auto; height: auto; }
+    #home-main { border-right: 0; border-bottom: 1px solid var(--border); }
+  }
+
+  /* sidebar */
+  #sidebar { border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+  #sidebar .top { padding: 12px; }
+  #sidebar .top button { width: 100%; }
+  #sessions { list-style: none; margin: 0; padding: 0 8px 12px; overflow-y: auto; flex: 1; }
+  #sessions li { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+  #sessions li:hover { background: var(--sunk); }
+  #sessions li.active { background: var(--accent-bg); color: var(--accent-text); }
+  #sessions .title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #sessions .when { font-size: 11px; color: var(--muted); }
+  #sessions .del { border: 0; background: none; padding: 0 4px; color: var(--muted); visibility: hidden; }
+  #sessions li:hover .del, #sessions li.active .del { visibility: visible; }
+
+  /* chat */
+  #chat { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); }
+  #thread { flex: 1; overflow-y: auto; padding: 20px 20px 8px; display: flex; flex-direction: column; gap: 16px; }
+  .msg-user { align-self: flex-end; max-width: 85%; background: var(--accent); color: var(--panel); padding: 8px 14px; border-radius: 14px 14px 4px 14px; white-space: pre-wrap; }
+  .msg-bot { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; animation: rise .25s ease-out; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .empty { margin: auto; text-align: center; max-width: 460px; }
+  .empty h2 { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 14px; }
+  .chips button { font-size: 13px; border-radius: 999px; }
+
+  /* pipeline animation */
+  .pipeline { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .stage { position: relative; padding: 6px 8px 6px 26px; border-radius: 8px; background: var(--sunk); font-size: 12px; color: var(--muted); overflow: hidden; min-width: 0; }
+  .stage .name { font-weight: 600; display: block; }
+  .stage .detail { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .stage::before { content: ""; position: absolute; left: 9px; top: 11px; width: 9px; height: 9px; border-radius: 50%; background: var(--border); }
+  .stage.running { color: var(--text); }
+  .stage.running::before { background: var(--active); animation: pulse 1s ease-in-out infinite; }
+  .stage.running::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, var(--accent-bg), transparent); animation: sweep 1.2s linear infinite; opacity: .7; pointer-events: none; }
+  .stage.done { color: var(--ok); }
+  .stage.done::before { background: var(--ok); }
+  .stage.done .name::after { content: " ✓"; }
+  @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.5); opacity: .5; } }
+  @keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+  .standalone { font-size: 12px; color: var(--muted); }
+  .standalone:empty { display: none; }
+  .standalone b { color: var(--text); font-weight: 500; }
+
+  .answer { overflow-wrap: anywhere; }
+  .answer p { margin: 0 0 8px; } .answer p:last-child { margin-bottom: 0; }
+  .answer ul, .answer ol { margin: 4px 0 8px; padding-left: 20px; }
+  .answer code { background: var(--sunk); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
+  .answer table { border-collapse: collapse; font-size: 13px; } .answer td, .answer th { border: 1px solid var(--border); padding: 3px 8px; }
+  .answer.streaming::after { content: "▍"; color: var(--accent); animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .cite { display: inline-block; font-size: 11px; line-height: 16px; padding: 0 5px; border-radius: 4px; background: var(--accent-bg); color: var(--accent-text); cursor: pointer; vertical-align: 1px; }
+  .sources { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sources:empty { display: none; }
+  .source { font-size: 12px; padding: 3px 8px; border: 1px solid var(--border); border-radius: 999px; cursor: pointer; background: var(--panel); }
+  .source:hover { border-color: var(--accent); }
+  .source .k { color: var(--muted); }
+
+  /* diagram card */
+  .diagram { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+  .diagram .bar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 8px; background: var(--sunk); }
+  .diagram select { padding: 5px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); font: inherit; max-width: 260px; }
+  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .seg button { border: 0; border-radius: 0; padding: 5px 10px; }
+  .seg button[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent-text); }
+  .diagram .canvas { padding: 12px; overflow-x: auto; background: var(--panel); min-height: 60px; }
+  .diagram .canvas svg { max-width: 100%; max-height: 640px; height: auto; animation: rise .3s ease-out; }
+  .diagram .canvas[data-kind="sequence"] svg { max-width: none !important; max-height: none; }
+  .diagram .spacer { flex: 1; }
+
+  #composer { border-top: 1px solid var(--border); padding: 12px 16px; background: var(--panel); }
+  #composer .row { display: flex; gap: 8px; align-items: flex-end; }
+  #composer textarea { flex: 1; resize: none; min-height: 42px; max-height: 160px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+  #composer .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+  /* graph panel */
+  #graphpanel { display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+  #graphpanel .bar { display: flex; gap: 6px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--panel); flex-wrap: wrap; }
+  #graph-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 13px; }
+  #graph-wrap { position: relative; flex: 1; min-height: 300px; }
+  #cy { position: absolute; inset: 0; }
+  #graph-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--muted); padding: 24px; text-align: center; pointer-events: none; }
+  .speed { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+  .speed input { width: 110px; accent-color: var(--accent); }
+  .speed output { min-width: 40px; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  /* docked player: sits between the toolbar and the graph, so it never covers nodes */
+  #player { border-bottom: 1px solid var(--border); background: var(--panel); padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; }
+  #player[hidden] { display: none; }
+  #player .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  #player .controls .spacer { flex: 1; }
+  #step-note { height: 104px; overflow-y: auto; border-left: 3px solid var(--active); border-radius: 0; padding: 2px 10px; font-size: 12.5px; line-height: 1.45; }
+  #step-note .meta { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--muted); }
+  #step-note .kind { color: var(--active); font-weight: 600; text-transform: capitalize; }
+  #step-note .title { font-weight: 600; font-size: 13px; margin: 1px 0 2px; }
+  #step-note .warn { margin-top: 4px; color: var(--danger); }
+  #step-note .progress { height: 3px; background: var(--sunk); border-radius: 2px; margin-top: 6px; overflow: hidden; }
+  #step-note .progress span { display: block; height: 100%; background: var(--active); transform-origin: left; }
+  #step-note.fresh { animation: rise .2s ease-out; }
+
+  /* legend doubles as a type filter */
+  #legend { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 7px 12px; border-top: 1px solid var(--border); background: var(--panel); }
+  #legend .chip { font-size: 11.5px; padding: 2px 9px; border-radius: 999px; display: inline-flex; align-items: center; gap: 5px; }
+  #legend .chip::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--c); border: 1px solid var(--c); }
+  #legend .chip[aria-pressed="false"] { opacity: .55; text-decoration: line-through; }
+  #legend .chip[aria-pressed="false"]::before { background: transparent; }
+  #legend .hint { font-size: 11px; color: var(--muted); margin-left: auto; }
+  @keyframes drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+  #details .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  #details { border-top: 1px solid var(--border); background: var(--panel); padding: 10px 12px; max-height: 22%; overflow-y: auto; font-size: 12px; }
+  #details table { width: 100%; border-collapse: collapse; margin-top: 6px; }
+  #details td { border-top: 1px solid var(--border); padding: 3px 6px; vertical-align: top; word-break: break-word; }
+  #details td:first-child { color: var(--muted); white-space: nowrap; }
+
+  @media (max-width: 1150px) {
+    .layout { grid-template-columns: 220px minmax(0, 1fr); grid-template-rows: calc(100vh - 50px) 60vh; height: auto; }
+    #chat { border-right: 0; }
+    #graphpanel { grid-column: 1 / -1; border-top: 1px solid var(--border); }
+  }
+  @media (max-width: 720px) {
+    .layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto calc(100vh - 50px) 70vh; }
+    header { gap: 8px; padding: 0 10px; }
+    #sidebar { border-right: 0; border-bottom: 1px solid var(--border); max-height: 180px; }
+    #thread { padding: 12px; }
+    .pipeline { grid-template-columns: repeat(2, 1fr); }
+    header h1 { font-size: 14px; }
+  }
+  /* expanded graph: hide sidebar + chat so the graph panel fills the window (placed after the
+     responsive rules so it wins at every width) */
+  .layout.graph-expanded { grid-template-columns: minmax(0, 1fr) !important; grid-template-rows: calc(100vh - 50px) !important; height: calc(100vh - 50px) !important; }
+  .layout.graph-expanded #sidebar, .layout.graph-expanded #chat { display: none; }
+  .layout.graph-expanded #graphpanel { grid-column: 1 / -1; border-top: 0; min-height: 0; }
+
+  /* full-screen diagram viewer */
+  #diagram-viewer { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; flex-direction: column; }
+  #diagram-viewer[hidden] { display: none; }
+  #diagram-viewer .head { display: flex; gap: 8px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  #diagram-viewer .head strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #diagram-viewer .body { flex: 1; overflow: auto; padding: 20px; display: flex; }
+  #diagram-viewer .body svg { margin: auto; width: 100%; height: 100%; max-width: none !important; max-height: none; }
+  #diagram-viewer .body.natural svg { width: auto; height: auto; }
+
+  /* catalog: every playbook / collection / connector / document with full details */
+  #view-browse { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 460px); height: calc(100vh - 50px); }
+  #browse-main { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); }
+  .tabs { display: flex; gap: 4px; padding: 10px 12px 0; border-bottom: 1px solid var(--border); background: var(--panel); overflow-x: auto; }
+  .tabs a { padding: 8px 12px; border-radius: 8px 8px 0 0; color: var(--muted); text-decoration: none; font-size: 13px; white-space: nowrap; border-bottom: 2px solid transparent; }
+  .tabs a[aria-current="page"] { color: var(--text); font-weight: 600; border-bottom-color: var(--c, var(--accent)); }
+  .tabs a::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c); margin-right: 6px; }
+  .tabs a b { font-weight: 500; color: var(--muted); margin-left: 4px; }
+  .toolbar { display: flex; gap: 8px; align-items: center; padding: 10px 12px; background: var(--panel); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .toolbar input, .toolbar select { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+  .toolbar input { flex: 1; min-width: 160px; }
+  .toolbar .count { font-size: 12px; color: var(--muted); }
+  #browse-table-wrap { flex: 1; overflow: auto; }
+  table.grid { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.grid th { position: sticky; top: 0; background: var(--sunk); text-align: left; font-weight: 600; font-size: 12px; color: var(--muted);
+                  padding: 8px 10px; cursor: pointer; user-select: none; white-space: nowrap; z-index: 1; }
+  table.grid th[aria-sort="ascending"]::after { content: " ▲"; } table.grid th[aria-sort="descending"]::after { content: " ▼"; }
+  table.grid td { padding: 8px 10px; border-top: 1px solid var(--border); vertical-align: top; }
+  table.grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.grid tbody tr { cursor: pointer; }
+  table.grid tbody tr:hover { background: var(--sunk); }
+  table.grid tbody tr.on { background: var(--accent-bg); }
+  table.grid .sub { color: var(--muted); font-size: 12px; }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 999px; background: var(--sunk); color: var(--muted); margin: 1px 2px 1px 0; white-space: nowrap; }
+  .pill.warn { background: none; border: 1px solid var(--danger); color: var(--danger); }
+  .pill.ok { color: var(--ok); }
+  #browse-detail { overflow-y: auto; background: var(--panel); padding: 16px 18px; }
+  #browse-detail h2 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  #browse-detail h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 16px 0 6px; }
+  #browse-detail .actions { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+  #browse-detail ol, #browse-detail ul { margin: 0; padding-left: 20px; }
+  #browse-detail li { margin: 3px 0; }
+  #browse-detail a { color: var(--accent-text); }
+  #browse-detail .doc-text { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 8px; font-size: 13px; }
+  #browse-detail .doc-text h1, #browse-detail .doc-text h2 { font-size: 15px; } #browse-detail .doc-text h3 { font-size: 13px; color: var(--text); }
+  #browse-detail .doc-text table { border-collapse: collapse; font-size: 12px; } #browse-detail .doc-text td, #browse-detail .doc-text th { border: 1px solid var(--border); padding: 3px 6px; }
+  #browse-detail .canvas { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; padding: 8px; margin-top: 8px; }
+  #browse-detail .canvas svg { max-width: 100%; height: auto; }
+  @media (max-width: 900px) {
+    #view-browse { grid-template-columns: minmax(0, 1fr); grid-template-rows: 60vh auto; height: auto; }
+    #browse-main { border-right: 0; border-bottom: 1px solid var(--border); }
+  }
+
+  /* guide */
+  #view-guide { display: grid; grid-template-columns: 250px minmax(0, 1fr); height: calc(100vh - 50px); }
+  #guide-toc { border-right: 1px solid var(--border); background: var(--panel); padding: 16px 10px; overflow-y: auto; }
+  #guide-toc h2 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 0 8px 8px; text-transform: uppercase; letter-spacing: .04em; }
+  #guide-toc button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px; border-radius: 8px; font-size: 13px; color: var(--text); }
+  #guide-toc button:hover, #guide-toc button.on { background: var(--accent-bg); color: var(--accent-text); }
+  #guide-body { overflow-y: auto; padding: 24px 32px 80px; scroll-behavior: smooth; }
+  .guide { max-width: 940px; font-size: 14.5px; line-height: 1.65; }
+  .guide h1 { font-size: 24px; font-weight: 600; margin: 0 0 6px; }
+  .guide h2 { font-size: 19px; font-weight: 600; margin: 36px 0 10px; padding-top: 12px; border-top: 1px solid var(--border); }
+  .guide h3 { font-size: 15px; font-weight: 600; margin: 20px 0 6px; }
+  .guide p { margin: 0 0 10px; } .guide ul, .guide ol { margin: 0 0 10px; padding-left: 22px; } .guide li { margin: 3px 0; }
+  .guide code { background: var(--sunk); padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+  .guide pre { background: var(--sunk); padding: 10px 12px; border-radius: 10px; overflow-x: auto; font-size: 12.5px; }
+  .guide table { border-collapse: collapse; width: 100%; margin: 8px 0 14px; font-size: 13px; }
+  .guide th, .guide td { border: 1px solid var(--border); padding: 6px 9px; text-align: left; vertical-align: top; }
+  .guide th { background: var(--sunk); font-weight: 600; }
+  .guide td, .guide th { overflow-wrap: break-word; }
+  .guide td.num, .guide th:last-child { white-space: nowrap; }
+  .guide td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .guide .lead { font-size: 16px; color: var(--muted); }
+  .guide .callout { border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 0; padding: 10px 14px; margin: 10px 0 14px; background: var(--panel); }
+  .guide .callout.warn { border-left-color: var(--active); }
+  .guide .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0 16px; }
+  .guide .card { background: var(--sunk); border-radius: 12px; padding: 10px 12px; }
+  .guide .card b { display: block; font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .guide .card span { font-size: 12px; color: var(--muted); }
+  .guide .swatch { display: inline-block; width: 11px; height: 11px; border-radius: 50%; background: var(--c); vertical-align: -1px; margin-right: 6px; }
+  .guide .diagram-box { border: 1px solid var(--border); border-radius: 12px; padding: 12px; overflow-x: auto; background: var(--panel); margin: 8px 0 14px; }
+  .guide .diagram-box svg { max-width: 100%; height: auto; }
+  .guide .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 900px) {
+    #view-guide { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; height: auto; }
+    #guide-toc { border-right: 0; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 4px; }
+    #guide-toc h2 { width: 100%; }
+    #guide-toc button { width: auto; }
+    #guide-body { padding: 16px; }
+    .guide .two { grid-template-columns: 1fr; }
+    .guide table { display: block; overflow-x: auto; }
+  }
+
+  @media (max-width: 720px) {
+    #user { display: none; }
+  }
+  @media (max-width: 480px) {
+    #mode { display: none; }
+    header { gap: 6px; padding: 0 8px; }
+    header h1 { max-width: 34vw; overflow: hidden; text-overflow: ellipsis; }
+    .nav a { padding: 4px 7px; font-size: 12px; }
+    #btn-logout .txt { display: none; }
+    header h1 { font-size: 13px; }
+    header button, #player button { padding: 4px 8px; }
+    .speed input { width: 80px; }
+  }
+  @media (max-width: 400px) {
+    header h1 { display: none; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>FortiSOAR Graph RAG</h1>
+  <nav class="nav" aria-label="Main">
+    <a href="#home" data-view="home">Home</a>
+    <a href="#browse/playbooks" data-view="browse">Catalog</a>
+    <a href="#chat" data-view="chat">Chat</a>
+    <a href="#guide" data-view="guide">Guide</a>
+  </nav>
+  <span class="badge" id="mode">connecting…</span>
+  <span class="spacer"></span>
+  <span id="user"></span>
+  <button id="btn-logout" title="Sign out" aria-label="Sign out"><span aria-hidden="true">⏻</span><span class="txt"> Sign out</span></button>
+</header>
+
+<section id="view-home" class="view" hidden>
+  <div id="home-main">
+    <div class="bar">
+      <strong>All playbooks</strong>
+      <span class="seg" role="group" aria-label="Home view" id="home-mode">
+        <button type="button" data-mode="ecosystem" title="Solution packs and the connectors their playbooks use">Ecosystem</button>
+        <button type="button" data-mode="alerts" title="Playbooks triggered by alerts or creating / updating / finding alerts, their child playbooks and connectors">Alerts → Playbooks</button>
+        <button type="button" data-mode="incidents" title="Playbooks triggered by incidents or acting on incidents, their child playbooks and connectors">Incidents → Playbooks</button>
+        <button type="button" data-mode="playbooks" title="Every playbook with its collection, trigger modules and connectors">All playbooks</button>
+      </span>
+      <button id="btn-replay" title="Replay the overview animation">↺ Replay animation</button>
+      <button id="btn-home-fit">Fit</button>
+    </div>
+    <div id="home-graph-wrap"><div id="cy-home"></div></div>
+    <div class="legend-row" data-legend data-graph="cy-home" role="group" aria-label="Show or hide node types"></div>
+  </div>
+  <aside id="home-side">
+    <div class="stats" id="stats"></div>
+    <button class="primary big" id="btn-start-chat">Chat with your playbooks →</button>
+    <div class="notice" id="pw-notice" hidden>You're signed in with the default <b>admin / admin</b> password. Set APP_USERNAME and APP_PASSWORD in .env before sharing this app.</div>
+    <section>
+      <h2>Selected</h2>
+      <div id="home-details" class="muted">Click a playbook or collection to see it here. Double-click any node to bring its direct links into focus.</div>
+    </section>
+    <section>
+      <h2>Collections</h2>
+      <ul id="home-collections"></ul>
+    </section>
+  </aside>
+</section>
+
+<section id="view-browse" class="view" hidden>
+  <div id="browse-main">
+    <nav class="tabs" id="browse-tabs" aria-label="Catalog sections"></nav>
+    <div class="toolbar">
+      <input id="browse-search" type="search" placeholder="Search…" aria-label="Search the catalog">
+      <select id="browse-filter" aria-label="Filter" hidden></select>
+      <span class="count" id="browse-count"></span>
+      <button id="browse-refresh" title="Reload from the graph">↻</button>
+    </div>
+    <div id="browse-table-wrap"><table class="grid" id="browse-table"></table></div>
+  </div>
+  <aside id="browse-detail"><div class="muted">Select a row to see everything linked to it.</div></aside>
+</section>
+
+<section id="view-guide" class="view" hidden>
+  <nav id="guide-toc" aria-label="Guide contents"><h2>Guide</h2></nav>
+  <div id="guide-body">
+  <article class="guide" id="guide">
+    <h1>How this app works</h1>
+    <p class="lead">A knowledge graph of FortiSOAR automation: playbooks, the collections and solution packs they ship in, the connectors they call, and the documentation around them, which you can explore visually and question in plain English.</p>
+    <div class="cards" id="g-cards"></div>
+    <div class="callout" id="g-status">Loading live statistics…</div>
+
+    <h2 id="g-what">1. What the app is</h2>
+    <p>FortiSOAR playbooks are JSON workflows: a trigger, a chain of steps, branches, approvals, calls to other playbooks, and calls to connectors (integrations with products such as FortiGate, VirusTotal or ServiceNow). Reading that JSON is slow, and the relationships between playbooks, connectors and docs are invisible in the files themselves.</p>
+    <p>This app parses that content into a <b>graph</b> (stored in Neo4j) where every playbook, step, connector, collection, solution pack and document is a node and every relationship (contains, calls, uses, documented by…) is an edge. On top of the graph it offers:</p>
+    <ul>
+      <li><b>Home</b>: an animated map of the whole ecosystem or of all playbooks.</li>
+      <li><b>Catalog</b>: searchable tables of every solution pack, playbook, collection, connector and document, with full detail pages that link to each other.</li>
+      <li><b>Chat</b>: ask questions in plain English. Answers are built only from the graph and cite their sources.</li>
+      <li><b>Graph panel and diagrams</b>: per-playbook graphs, step-by-step animation, flowcharts and sequence diagrams.</li>
+    </ul>
+    <p>The approach is <b>Graph RAG</b> (retrieval-augmented generation over a graph): search finds the relevant nodes, the graph supplies their context (steps, callers, connectors, docs), and a language model writes the answer from that context only.</p>
+
+    <h2 id="g-tour">2. Quick tour of the screens</h2>
+    <table>
+      <tr><th>Screen</th><th>What you see</th><th>Things to try</th></tr>
+      <tr><td><b>Home</b></td><td>Stat tiles (click to open the Catalog), the circular overview graph, the selected-node panel and a list of packs or collections.</td><td>Double-click a node to pull its direct links into a readable ring. Use ↺ Replay to re-run the animation. Click the legend to hide or show node types.</td></tr>
+      <tr><td><b>Catalog</b></td><td>Tabs for solution packs, playbooks, collections, connectors and documents, each with search, filter and sortable columns, plus a detail panel.</td><td>Click a row. Every name in a detail panel is a link. Open the inline flowchart or sequence diagram for a playbook. Use Show on Home and Ask in chat.</td></tr>
+      <tr><td><b>Chat</b></td><td>Saved conversations on the left, the thread in the middle, and the graph of the cited playbooks on the right.</td><td>Ask a question, then a follow-up ("which of those need approval?"). Click a citation chip. Press ▶ Play to walk through a playbook.</td></tr>
+      <tr><td><b>Guide</b></td><td>This page. The numbers in it are read live from the graph.</td><td>Use it to check what data is loaded right now.</td></tr>
+    </table>
+
+    <h2 id="g-sources">3. Where the data comes from</h2>
+    <p>All content comes from the public GitHub organisation <b>github.com/fortinet-fortisoar</b>. Fortinet's product documentation site (docs.fortinet.com) is deliberately <b>not</b> used.</p>
+    <div id="g-source-live"></div>
+    <h3>How it is fetched (<code>scripts/fetch_fortinet.py</code>)</h3>
+    <ol>
+      <li><b>Repo list:</b> the GitHub REST API lists every public repo in the org (one call per 100 repos), cached in <code>data/fortinet/repos.jsonl</code>.</li>
+      <li><b>Download:</b> each repo whose name starts with <code>connector-</code>, <code>solution-</code>, <code>widget-</code> or <code>ai-</code> is downloaded as a tarball from codeload.github.com (not rate-limited like the API).</li>
+      <li><b>Keep only content:</b> from each tarball only <code>info.json</code>, <code>README.md</code>, <code>release_notes.md</code>, <code>docs/*.md</code>, <code>collection.metadata.json</code> and playbook JSON under <code>playbooks/</code> are written to <code>data/fortinet/github/&lt;repo&gt;/</code>. Code, images and CI files are skipped, and paths are checked so nothing is written outside that folder.</li>
+      <li><b>Release-branch fallback:</b> many repos keep their content only on <code>release/x.y.z</code> branches with an empty default branch. For those, branches are listed with <code>git ls-remote</code> and the newest release branch is fetched instead.</li>
+      <li><b>Re-sync:</b> re-running skips repos whose last push date hasn't changed, so only updated repos are downloaded.</li>
+    </ol>
+    <h3>What each kind of repo contributes</h3>
+    <table>
+      <tr><th>Repo kind</th><th>Files used</th><th>Becomes</th></tr>
+      <tr><td><code>solution-pack-*</code>, <code>ai-*</code></td><td><code>info.json</code> (label, version, category, dependencies), <code>playbooks/&lt;collection&gt;/&lt;playbook&gt;.json</code> (Content Hub layout, one playbook per file) and <code>collection.metadata.json</code>, <code>README.md</code> and <code>docs/setup.md</code>, <code>usage.md</code>, <code>contents.md</code></td><td>SolutionPack, PlaybookCollection, Playbook and Step nodes, plus pack documents</td></tr>
+      <tr><td><code>connector-*</code></td><td><code>&lt;name&gt;/info.json</code> (configuration fields and every action with description and parameters), <code>playbooks/playbooks.json</code> (sample playbooks), <code>release_notes.md</code></td><td>Connector and ConnectorOperation nodes, sample collections, and a generated connector reference document</td></tr>
+      <tr><td><code>widget-*</code></td><td><code>info.json</code>, <code>README.md</code></td><td>Widget documents (no playbooks)</td></tr>
+    </table>
+    <div class="callout warn">Some solution packs publish only a README on GitHub; their playbooks are distributed through FortiSOAR's Content Hub, so the app can only include their documentation.</div>
+
+    <h2 id="g-data">4. What data the app has right now</h2>
+    <p>Everything in this section is read live from the graph when you open the Guide (<span id="g-generated"></span>).</p>
+    <div class="two">
+      <div><h3>Nodes by type</h3><table id="g-nodes"></table></div>
+      <div><h3>Playbooks</h3><table id="g-playbooks"></table></div>
+    </div>
+    <h3>Relationships</h3>
+    <table id="g-rels"></table>
+    <div class="two">
+      <div><h3>Step kinds</h3><table id="g-steps"></table></div>
+      <div><h3>Trigger types</h3><table id="g-triggers"></table></div>
+    </div>
+    <div class="two">
+      <div><h3>Largest solution packs</h3><table id="g-top-packs"></table></div>
+      <div><h3>Most used connectors</h3><table id="g-top-connectors"></table></div>
+    </div>
+
+    <h2 id="g-build">5. How the graph is built</h2>
+    <p>Everything below is deterministic code; no language model is involved in building the graph.</p>
+    <div class="diagram-box" id="g-pipeline"></div>
+    <h3>5.1 Parsing playbooks</h3>
+    <ul>
+      <li>Both export shapes are read: Content Hub (one playbook object per file, with the collection taken from <code>collection.metadata.json</code>) and collection exports (<code>{"type": "workflow_collections", "data": [{"workflows": [...]}]}</code>).</li>
+      <li>Collections that reuse generic names (e.g. "03 - Triage") are prefixed with their pack: <i>Incident Response · 03 - Triage</i>.</li>
+      <li>Steps are ordered by walking the <code>routes</code> breadth-first from the trigger step. A route's <code>label</code> (e.g. "Malicious", "Approve") becomes the branch label; its <code>name</code> ("A -&gt; B") is ignored.</li>
+      <li>A step whose arguments contain <code>workflowReference</code> becomes a <code>CALLS</code> edge to the child playbook. If that playbook isn't loaded, a placeholder node keeps the edge.</li>
+      <li>If the same playbook (same UUID) ships in several packs, the solution-pack copy is kept over a connector's sample copy.</li>
+    </ul>
+    <h3>5.2 Step types</h3>
+    <p>Exports only carry an opaque step-type ID, so each step's kind is inferred from its arguments:</p>
+    <table>
+      <tr><th>Kind</th><th>Recognised by</th><th>Shown as</th></tr>
+      <tr><td>trigger</td><td>the playbook's <code>triggerStep</code></td><td>double circle in flowcharts</td></tr>
+      <tr><td>connector</td><td><code>arguments.connector</code> + <code>operation</code></td><td>teal; links to the ConnectorOperation</td></tr>
+      <tr><td>utility / code snippet</td><td>connector <code>cyops_utilities</code> / <code>code-snippet</code></td><td>grey</td></tr>
+      <tr><td>reference</td><td><code>workflowReference</code></td><td>blue; CALLS edge to the child</td></tr>
+      <tr><td>decision</td><td><code>conditions</code></td><td>amber</td></tr>
+      <tr><td>manual input (approval)</td><td><code>is_approval</code>, <code>InputBased</code>, <code>inputVariables</code> or <code>response_mapping</code></td><td>pink</td></tr>
+      <tr><td>create / update / find record</td><td><code>resource</code> + <code>collection</code> (a module IRI means create) / <code>query</code> + <code>module</code></td><td>grey</td></tr>
+      <tr><td>wait</td><td><code>delay</code></td><td>grey</td></tr>
+      <tr><td>set variable</td><td>the Set Variable step-type ID, or only control keys</td><td>grey</td></tr>
+    </table>
+    <h3>5.3 Triggers</h3>
+    <p>The trigger step's arguments decide the trigger type: <b>manual</b> (a button on records: <code>route</code>/<code>executeButtonText</code>), <b>record_event</b> (on create/update of a module, with field filters), <b>api_endpoint</b> (custom API route with auth methods) or <b>referenced</b> (only started by other playbooks). The modules involved (alerts, incidents…) become <code>TRIGGERED_ON</code> edges.</p>
+    <h3>5.4 Scrubbing and secret detection</h3>
+    <p>Before anything is stored or embedded, text and step arguments are scrubbed: IP addresses, emails, credentials inside URLs, AWS key IDs and account IDs in ARNs, bearer tokens and long opaque strings are masked, plus any terms listed in <code>SCRUB_TERMS</code>. Values under credential-type keys (password, token, api_key…) are replaced with <code>&lt;REDACTED&gt;</code> when they are literal strings; <code>{{vars…}}</code> references, booleans and numbers are left alone. A step is flagged <b>has_secret</b> only when a literal credential was found, which is what the ⚠ markers in the Catalog mean.</p>
+    <h3>5.5 Connectors, solution packs and documents</h3>
+    <ul>
+      <li><b>Connectors</b> get their label, version, category, publisher, description and online-docs link from <code>info.json</code>, and every action becomes a ConnectorOperation with a title, description and parameters, even ones no playbook uses yet.</li>
+      <li><b>Solution packs</b> become SolutionPack nodes that <code>INCLUDES</code> their collections and <code>DEPENDS_ON</code> the packs listed in their dependencies.</li>
+      <li><b>Documents</b> (pack READMEs and docs, connector references generated from <code>info.json</code> and release notes, widget READMEs) are split into ~1,200-character chunks with 200 characters of overlap. Chunks link with <code>EXPLAINS</code> to the connectors and FortiSOAR concepts they mention.</li>
+    </ul>
+    <h3>5.6 Derived links</h3>
+    <p>After every load, these links are rebuilt from the graph:</p>
+    <ul>
+      <li><b>Playbook <code>REFERENCES</code> vendor doc:</b> through the connectors it uses (the connector's reference doc), through features its steps use, and through its solution pack's own docs.</li>
+      <li><b>Collection <code>DOCUMENTED_BY</code> / <code>REFERENCES</code> doc:</b> rolled up from its playbooks, recording which playbooks it came through.</li>
+      <li><b>Playbook <code>DOCUMENTED_BY</code> internal doc:</b> only for your own runbooks: name matches are approved automatically, and LLM or similarity suggestions wait for review (<code>links approve</code>).</li>
+    </ul>
+    <h3>5.7 Search indexes and embeddings</h3>
+    <p>Each playbook's summary (name, pack, description, trigger, steps and connectors) and each document chunk is turned into a vector (embedding) and stored in Neo4j vector indexes. Full-text indexes cover names, titles, descriptions and chunk text. Embeddings are cached on disk, so re-loads only embed new or changed text.</p>
+
+    <h2 id="g-model">6. The graph model</h2>
+    <p>Node types and the relationships between them, with live counts:</p>
+    <div class="diagram-box" id="g-model-diagram"></div>
+    <h3>Node types</h3>
+    <table id="g-node-types"></table>
+    <h3>Relationships</h3>
+    <table>
+      <tr><th>Relationship</th><th>Meaning</th><th>Created by</th></tr>
+      <tr><td>SolutionPack -INCLUDES-&gt; PlaybookCollection</td><td>the pack ships this collection</td><td>pack folders</td></tr>
+      <tr><td>SolutionPack -DEPENDS_ON-&gt; SolutionPack</td><td>prerequisite pack</td><td>info.json dependencies</td></tr>
+      <tr><td>PlaybookCollection -CONTAINS-&gt; Playbook</td><td>membership</td><td>export structure</td></tr>
+      <tr><td>Playbook -HAS_STEP-&gt; Step</td><td>the playbook's steps, with their order</td><td>steps array</td></tr>
+      <tr><td>Step -NEXT-&gt; Step</td><td>execution flow, optionally labelled with a branch outcome</td><td>routes</td></tr>
+      <tr><td>Step -USES-&gt; ConnectorOperation -OF-&gt; Connector</td><td>which connector action a step calls</td><td>connector steps + connector info.json</td></tr>
+      <tr><td>Playbook -CALLS-&gt; Playbook</td><td>runs a child playbook</td><td>workflowReference</td></tr>
+      <tr><td>Playbook -TRIGGERED_ON-&gt; Module</td><td>record type that starts or feeds it</td><td>trigger step</td></tr>
+      <tr><td>Playbook / Step -ACTS_ON-&gt; Module</td><td>the playbook creates, updates or finds records of that module (with which steps)</td><td>derived from record steps' <code>collection</code>, <code>collectionType</code> and <code>module</code> arguments</td></tr>
+      <tr><td>Connector -HAS_SAMPLES-&gt; PlaybookCollection</td><td>sample playbooks shipped with the connector</td><td>connector repo</td></tr>
+      <tr><td>Connector / SolutionPack -DOCUMENTED_BY-&gt; Document</td><td>its reference doc or README / usage docs</td><td>repo docs</td></tr>
+      <tr><td>Document -HAS_CHUNK-&gt; Chunk -EXPLAINS-&gt; Connector / Concept</td><td>searchable passages and what they mention</td><td>chunking + name matching</td></tr>
+      <tr><td>Playbook / Collection -REFERENCES-&gt; Document</td><td>relevant vendor documentation (with reasons)</td><td>derived links</td></tr>
+      <tr><td>Playbook / Collection -DOCUMENTED_BY-&gt; Document</td><td>your internal runbooks (approved links)</td><td>doc linking + review</td></tr>
+    </table>
+
+    <h2 id="g-ui">7. How the graph is shown in the app</h2>
+    <h3>Colours and shapes</h3>
+    <p>Every node is a circle; colour and size tell the types apart. The same legend appears under each graph, and clicking a legend chip hides or shows that type everywhere.</p>
+    <table id="g-legend"></table>
+    <h3>Home</h3>
+    <ul>
+      <li><b>Ecosystem map</b> (large graphs): solution packs in the centre and the connectors their playbooks use on the outer ring, with dashed edges for pack dependencies. Thousands of individual playbooks can't be drawn readably, so this view is used once there are more than 300.</li>
+      <li><b>Alerts → Playbooks</b> and <b>Incidents → Playbooks</b>: the module in the centre; the playbooks triggered by it (solid amber edges, labelled with the trigger type) or creating, updating or finding its records (dotted <code>ACTS_ON</code> edges); then the child playbooks they call; and the connectors all of them use on the outside.</li>
+      <li><b>All playbooks</b>: collections in the centre, then playbooks, modules and connectors (the default for small graphs).</li>
+      <li>Nodes fly out from the centre and fade in ring by ring. <b>Double-click</b> any node to pull its direct links into a ring around it, with outward-pointing labels and everything else faded. Double-click again, click the background or press Esc to restore.</li>
+    </ul>
+    <h3>Catalog</h3>
+    <p>Each tab lists one node type with counts that come from the graph (steps, callers, runbooks, connectors, samples…). Detail panels show the node's neighbourhood as links: a playbook shows its steps (with connector operations and ⚠ secret flags), calls, callers, runbooks and vendor docs; a connector shows each action and the playbooks and steps that use it; a document shows its full text and what links to it. Large tabs render 300 rows at a time; search or filter to narrow them.</p>
+    <h3>Graph panel (Chat)</h3>
+    <p>Shows the neighbourhood of the playbooks an answer cites: collection, trigger modules, steps (dashed NEXT edges), connector operations and connectors, called and calling playbooks, and linked documents. <b>▶ Play</b> walks through the steps in execution order, in Auto (speed up to 10×) or Manual mode with Prev and Next (or the arrow keys), with a note above the graph explaining each step from its actual arguments.</p>
+    <h3>Diagrams</h3>
+    <p>Generated from the graph, never by the language model: a <b>flowchart</b> of the step logic (circles, the trigger as a double circle, branch labels, approvals, child playbooks, secrets outlined in red) and a <b>sequence diagram</b> showing who talks to whom (trigger, then playbook, then each connector, child playbook and analyst). Use ⤢ Expand to view either full screen.</p>
+
+    <h2 id="g-answers">8. How chat answers are produced</h2>
+    <ol>
+      <li><b>Understand:</b> a follow-up question is rewritten into a standalone question using the conversation, shown as "Interpreted as…".</li>
+      <li><b>Search:</b> hybrid retrieval. Vector similarity (embeddings) and keyword full-text search run over playbooks (including matches on their steps, connectors and modules) and document chunks, and the two rankings are merged with reciprocal rank fusion.</li>
+      <li><b>Graph:</b> expansion from the hits. Each top playbook brings its trigger, ordered steps, connector operations, callers, callees and docs, and document hits pull in the playbooks linked to them.</li>
+      <li><b>Answer:</b> the language model writes the answer from that context only, streaming it back with citations: <code>[C#]</code> for a company playbook, <code>[D#]</code> for an internal doc and <code>[V#]</code> for a vendor or GitHub doc. Every playbook the answer cites or names gets a diagram card.</li>
+    </ol>
+    <div class="callout">Listing questions ("which playbooks…") see only the top search results, so they can miss items in a large graph. Use the Catalog filters for complete lists.</div>
+
+    <h2 id="g-config">9. Modes, models and access</h2>
+    <table>
+      <tr><th>Mode</th><th>Graph</th><th>Language model / embeddings</th><th>Data leaves the machine?</th></tr>
+      <tr><td>local</td><td>Neo4j in Docker</td><td>hosted (Gemini by default)</td><td>yes, to the model API</td></tr>
+      <tr><td>cloud</td><td>Neo4j Aura or a remote Neo4j</td><td>hosted</td><td>yes</td></tr>
+      <tr><td>full-local</td><td>Neo4j in Docker</td><td>Ollama</td><td>no (enforced)</td></tr>
+    </table>
+    <p id="g-config-live"></p>
+    <p>Sign-in uses <code>APP_USERNAME</code> / <code>APP_PASSWORD</code> (admin / admin by default; cloud mode refuses the default). Embedding pacing and caching are set with <code>EMBED_TPM</code> and <code>EMBED_CACHE</code>.</p>
+
+    <h2 id="g-limits">10. Limitations and known gaps</h2>
+    <ul id="g-limits-list">
+      <li>Only content published on GitHub is included. Packs that ship their playbooks only through Content Hub appear through their docs alone, and connectors without a public repo (for example some firewall connectors) have no description or action list.</li>
+      <li>Calls to playbooks that aren't loaded show as placeholder nodes ("unresolved:&lt;uuid&gt;").</li>
+      <li>Step types and triggers are inferred from arguments, so unusual custom steps may show as a generic "action".</li>
+      <li>Chat needs the language model's quota. On Gemini's free tier, daily request and embedding limits apply.</li>
+    </ul>
+
+    <h2 id="g-glossary">11. Glossary</h2>
+    <table>
+      <tr><td><b>Playbook</b></td><td>A FortiSOAR workflow: a trigger plus steps.</td></tr>
+      <tr><td><b>Collection</b></td><td>A folder of playbooks.</td></tr>
+      <tr><td><b>Solution pack</b></td><td>A Content Hub bundle of collections, modules and docs for a use case.</td></tr>
+      <tr><td><b>Connector</b></td><td>An integration with an external product installed in FortiSOAR, e.g. <code>virustotal</code>.</td></tr>
+      <tr><td><b>Connector operation</b></td><td>One action a connector offers, e.g. <code>virustotal.get_file_reputation</code>. A playbook step USES an operation, which is OF a connector. Operations appear in the Chat graph panel (small light-teal circles between steps and connectors), in each connector's Catalog page under "Operations and where they're used", and on playbook steps. The Home ecosystem map shows connectors only.</td></tr>
+      <tr><td><b>Module</b></td><td>A FortiSOAR record type (alerts, incidents, indicators…).</td></tr>
+      <tr><td><b>Chunk</b></td><td>A passage of a document used for search.</td></tr>
+      <tr><td><b>Embedding</b></td><td>A numeric vector of text used for similarity search.</td></tr>
+      <tr><td><b>RRF</b></td><td>Reciprocal rank fusion, which merges the vector and keyword rankings.</td></tr>
+      <tr><td><b>Placeholder</b></td><td>A node for a called playbook that isn't loaded.</td></tr>
+    </table>
+
+    <h2 id="g-commands">12. Commands</h2>
+<pre>.venv/bin/python scripts/fetch_fortinet.py --repos-only     # download / re-sync GitHub content
+.venv/bin/python -m app.cli ingest-fortinet [--wipe --yes]  # (re)load it into the graph
+.venv/bin/python -m app.cli status                          # node counts
+.venv/bin/python -m app.cli derive-links                    # rebuild derived links
+.venv/bin/python -m app.cli links list | approve | reject | add   # review internal-doc links
+.venv/bin/python -m app.cli serve                           # web UI on :8000</pre>
+  </article>
+  </div>
+</section>
+
+<div class="layout view" id="view-chat" hidden>
+  <nav id="sidebar" aria-label="Chats">
+    <div class="top"><button class="primary" id="btn-new">+ New chat</button></div>
+    <ul id="sessions"></ul>
+  </nav>
+
+  <section id="chat">
+    <div id="thread" aria-live="polite"></div>
+    <form id="composer">
+      <div class="row">
+        <textarea id="question" rows="1" placeholder="Ask a question or a follow-up…"></textarea>
+        <button class="primary" id="btn-send" type="submit">Send</button>
+      </div>
+      <div class="hint">Enter to send · Shift+Enter for a new line</div>
+      <div class="error" id="composer-error"></div>
+    </form>
+  </section>
+
+  <section id="graphpanel">
+    <div class="bar">
+      <span id="graph-title">Graph</span>
+      <button id="btn-play" title="Walk through the playbook's steps in execution order" disabled>▶ Play</button>
+      <button id="btn-overview" title="Show every playbook in this graph">All</button>
+      <button id="btn-fit">Fit</button>
+      <button id="btn-clear">Clear</button>
+      <button id="btn-expand" title="Enlarge the graph to fill the window (Esc to restore)" aria-pressed="false">⤢ Expand</button>
+    </div>
+    <div id="player" hidden>
+      <div class="controls">
+        <button id="btn-prev" title="Previous step (←)">◀ Prev</button>
+        <button id="btn-pause" title="Pause / resume (Space)">❚❚ Pause</button>
+        <button id="btn-next" title="Next step (→)">Next ▶</button>
+        <span class="seg" role="group" aria-label="Playback mode">
+          <button type="button" data-mode="auto" title="Advance automatically at the chosen speed">Auto</button>
+          <button type="button" data-mode="manual" title="Advance only with Next / Prev or the arrow keys">Manual</button>
+        </span>
+        <span class="spacer"></span>
+        <label class="speed" title="Auto-play speed">Speed
+          <input type="range" id="speed" min="0.25" max="10" step="0.25" value="1" aria-label="Animation speed">
+          <output id="speed-out">1×</output>
+        </label>
+      </div>
+      <div id="step-note" role="status" aria-live="polite"></div>
+    </div>
+    <div id="graph-wrap">
+      <div id="cy"></div>
+      <div id="graph-empty">Answers show the playbooks they cite here. Use ▶ Play to walk through a playbook step by step.</div>
+    </div>
+    <div id="legend" class="legend-row" data-legend data-graph="cy" role="group" aria-label="Show or hide node types"></div>
+    <div id="details" class="muted">Click a node to see its properties. Double-click a playbook to expand it.</div>
+  </section>
+</div>
+
+<div id="diagram-viewer" hidden role="dialog" aria-modal="true" aria-label="Diagram">
+  <div class="head">
+    <strong id="viewer-title"></strong>
+    <button id="viewer-size" title="Switch between fit-to-window and actual size">Actual size</button>
+    <button id="viewer-close" title="Close (Esc)">✕ Close</button>
+  </div>
+  <div class="body" id="viewer-body"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.30.2/cytoscape.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.6/dist/purify.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
+};
+mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "default",
+                     flowchart: { htmlLabels: true, curve: "basis" }, sequence: { mirrorActors: false, useMaxWidth: false } });
+
+function toLogin() { location.href = "/login"; }
+async function api(path, options) {
+  const res = await fetch(path, options);
+  if (res.status === 401) { toLogin(); throw new Error("Signed out"); }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.detail || `${res.status} ${res.statusText}`);
+  return body;
+}
+const post = (path, data, method = "POST") =>
+  api(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data ?? {}) });
+
+/* ================================================================ graph panel */
+/* Every node is a circle; colour and size tell the types apart. */
+const TYPES = {
+  SolutionPack: ["--pack", 46], PlaybookCollection: ["--coll", 52], Playbook: ["--pb", 36], Step: ["--step", 16], ConnectorOperation: ["--op", 20],
+  Connector: ["--con", 26], Module: ["--mod", 26], Document: ["--doc", 22],
+};
+const LABELS = { ConnectorOperation: "Connector op", PlaybookCollection: "Collection", SolutionPack: "Solution pack" };
+/* Legend chips filter node types: pressed = shown. Hidden types persist per browser. */
+const hiddenTypes = new Set((() => { try { return JSON.parse(store.get("graphrag.hidden") || "[]"); } catch { return []; } })());
+const graphs = [];  // every cytoscape instance (home overview + chat graph) shares the type filter
+function applyFilter() {
+  for (const g of graphs) g.batch(() => g.nodes().forEach(n => n.toggleClass("hidden", hiddenTypes.has(n.data("type")))));
+}
+function renderLegend() {
+  document.querySelectorAll("[data-legend]").forEach(el => renderLegendInto(el));
+}
+function renderLegendInto(el) {
+  // only list the node types present in this legend's graph (all types while it's empty), with counts
+  const graph = graphs.find(g => g.container()?.id === el.dataset.graph);
+  const counts = {};
+  graph?.nodes().forEach(n => { counts[n.data("type")] = (counts[n.data("type")] || 0) + 1; });
+  const present = Object.keys(counts).length ? Object.entries(TYPES).filter(([t]) => counts[t]) : Object.entries(TYPES);
+  el.innerHTML = present.map(([t, [v]]) =>
+    `<button type="button" class="chip" data-type="${t}" aria-pressed="${!hiddenTypes.has(t)}" style="--c: var(${v})"
+       title="Click to ${hiddenTypes.has(t) ? "show" : "hide"} ${LABELS[t] || t} nodes">${LABELS[t] || t}${counts[t] ? ` <span class="sub">${counts[t]}</span>` : ""}</button>`).join("")
+    + (hiddenTypes.size ? `<button type="button" class="chip" data-reset style="--c: var(--muted)">Show all</button>` : "")
+    + `<span class="hint">Click a type to show or hide it</span>`;
+  el.querySelectorAll(".chip").forEach(b => b.onclick = () => {
+    if (b.hasAttribute("data-reset")) hiddenTypes.clear();
+    else if (hiddenTypes.has(b.dataset.type)) hiddenTypes.delete(b.dataset.type);
+    else hiddenTypes.add(b.dataset.type);
+    store.set("graphrag.hidden", JSON.stringify([...hiddenTypes]));
+    applyFilter(); renderLegend();
+  });
+}
+renderLegend();
+
+const graphStyle = () => [
+    { selector: "node", style: {
+      "background-color": n => css((TYPES[n.data("type")] || ["--step"])[0]),
+      shape: "ellipse",
+      label: "data(label)", color: css("--text"), "font-size": 11, "text-valign": "bottom", "text-margin-y": 4,
+      "text-wrap": "ellipsis", "text-max-width": 140,
+      width: n => (TYPES[n.data("type")] || [, 22])[1], height: n => (TYPES[n.data("type")] || [, 22])[1],
+      "transition-property": "background-color, border-width, border-color, width, height, opacity",
+      "transition-duration": reducedMotion ? 0 : 250,
+    }},
+    { selector: "node[type='Playbook']", style: { "font-size": 12, "font-weight": 600 } },
+    { selector: "node[type='SolutionPack']", style: { "font-size": 12, "font-weight": 600 } },
+    { selector: "edge[type='ACTS_ON']", style: { label: "data(detail)", "line-style": "dotted", "line-color": css("--mod"), "target-arrow-color": css("--mod") } },
+    { selector: "edge[type='TRIGGERED_ON']", style: { "line-color": css("--mod"), "target-arrow-color": css("--mod"), width: 2 } },
+    { selector: "edge[type='DEPENDS_ON']", style: { label: "depends on", "line-style": "dashed", "line-color": css("--pack"), "target-arrow-color": css("--pack") } },
+    { selector: "node[type='PlaybookCollection']", style: { "font-size": 13, "font-weight": 700, "text-valign": "center", "text-margin-y": 0,
+                                                           "text-wrap": "wrap", "text-max-width": 90, color: "#ffffff",
+                                                           "text-outline-color": css("--coll"), "text-outline-width": 2 } },
+    { selector: "node[type='Step']", style: { "font-size": 10 } },
+    { selector: "node[?focus]", style: { "border-width": 3, "border-color": css("--accent"), width: 46, height: 46 } },
+    { selector: "node:selected", style: { "border-width": 3, "border-color": css("--text") } },
+    { selector: "edge", style: {
+      width: 1.2, "line-color": css("--edge"), "target-arrow-color": css("--edge"), "target-arrow-shape": "triangle",
+      "curve-style": "bezier", "arrow-scale": 0.8, "font-size": 9, color: css("--muted"),
+      "text-rotation": "autorotate", "text-background-color": css("--bg"), "text-background-opacity": 1,
+      "transition-property": "line-color, width, target-arrow-color, opacity", "transition-duration": reducedMotion ? 0 : 250,
+    }},
+    { selector: "edge[type='CALLS'], edge[type='TRIGGERED_ON'], edge[type='DOCUMENTED_BY'], edge[type='REFERENCES'], edge:selected", style: { label: "data(type)" } },
+    { selector: "edge[type='REFERENCES']", style: { "line-style": "dotted" } },
+    { selector: "edge[type='CALLS']", style: { width: 2.5, "line-color": css("--pb"), "target-arrow-color": css("--pb") } },
+    { selector: "edge[type='NEXT']", style: { "line-style": "dashed" } },
+    { selector: ".dim", style: { opacity: 0.18 } },
+    { selector: "node.hidden", style: { display: "none" } },
+    { selector: "node.visited", style: { "background-color": css("--accent"), opacity: 1 } },
+    { selector: "node.active", style: { "background-color": css("--active"), "border-width": 4, "border-color": css("--active"),
+                                        width: 32, height: 32, "font-size": 13, "font-weight": 700, "z-index": 10, opacity: 1 } },
+    { selector: "edge.active", style: { "line-color": css("--active"), "target-arrow-color": css("--active"), width: 4, opacity: 1 } },
+    { selector: "edge.visited", style: { "line-color": css("--accent"), "target-arrow-color": css("--accent"), width: 2.5, opacity: 1 } },
+    /* double-click focus: the node, its direct links in a readable ring, everything else faded */
+    { selector: ".faded", style: { opacity: 0.06, "text-opacity": 0 } },
+    { selector: "node.hidden.force-show", style: { display: "element" } },
+    { selector: "node.nb", style: { "text-wrap": "wrap", "text-max-width": 150, "font-size": 13, "font-weight": 600,
+                                    color: css("--text"), "text-background-color": css("--panel"), "text-background-opacity": 0.95,
+                                    "text-background-padding": 3, "text-background-shape": "roundrectangle",
+                                    "text-outline-width": 0, "z-index": 20, opacity: 1, "text-opacity": 1 } },
+    { selector: "node.nb[type='Step'], node.nb[type='ConnectorOperation'], node.nb[type='Document']", style: { width: 28, height: 28 } },
+    { selector: "node.nb-center", style: { width: 62, height: 62, "border-width": 5, "border-color": css("--active"),
+                                           "font-size": 15, "z-index": 30 } },
+    { selector: "edge.nb", style: { width: 2.5, opacity: 1, label: "data(type)", "font-size": 10, color: css("--text"),
+                                    "text-opacity": 1, "z-index": 19 } },
+];
+const makeGraph = container => {
+  const g = cytoscape({ container, wheelSensitivity: 0.3, maxZoom: 1.8, minZoom: 0.08, style: graphStyle() });
+  graphs.push(g);
+  return g;
+};
+const cy = makeGraph($("cy"));
+let currentPlaybook = null;  // { uuid, name } targeted by ▶ Play
+
+function setCurrentPlaybook(uuid, name) {
+  currentPlaybook = uuid ? { uuid, name } : null;
+  $("graph-title").textContent = name ? `Playbook: ${name}` : "Graph";
+  $("btn-play").disabled = !uuid;
+}
+
+function render(graph, { replace = true } = {}) {
+  stopPlay();
+  clearFocus(cy, false);
+  if (replace) cy.elements().remove();
+  const els = [];
+  for (const n of graph.nodes) if (!cy.getElementById(n.id).length) els.push({ group: "nodes", data: { ...n } });
+  for (const e of graph.edges) if (!cy.getElementById(e.id).length) els.push({ group: "edges", data: { ...e } });
+  cy.add(els);
+  applyFilter();
+  renderLegend();
+  $("graph-empty").style.display = cy.nodes().length ? "none" : "flex";
+  return new Promise(resolve => {
+    const layout = cy.layout({ name: "cose", animate: !reducedMotion, animationDuration: 500, nodeRepulsion: 14000,
+                               idealEdgeLength: 55, nodeOverlap: 20, componentSpacing: 60, padding: 30 });
+    // cose doesn't always emit layoutstop (e.g. when animating from an empty graph), so never wait on it alone.
+    let done = false;
+    const finish = () => { if (!done) { done = true; resolve(); } };
+    layout.one("layoutstop", finish);
+    setTimeout(finish, reducedMotion ? 50 : 900);
+    layout.run();
+  });
+}
+
+async function showPlaybook(uuid, name, { replace = true } = {}) {
+  const g = await api(`/graph/playbook/${encodeURIComponent(uuid)}?steps=true`);
+  await render(g, { replace });
+  const pb = cy.nodes().filter(n => n.data("props")?.uuid === uuid);
+  setCurrentPlaybook(uuid, name || pb.data("label"));
+}
+
+function focusPlaybook(uuid) {
+  const target = cy.nodes().filter(n => n.data("props")?.uuid === uuid);
+  if (!target.length) return false;
+  setCurrentPlaybook(uuid, target.data("label"));
+  cy.elements().addClass("dim");
+  target.closedNeighborhood().removeClass("dim");
+  cy.animate({ fit: { eles: target.closedNeighborhood(), padding: 60 }, duration: reducedMotion ? 0 : 400 });
+  setTimeout(() => { if (!player.playing) cy.elements().removeClass("dim"); }, 2200);
+  return true;
+}
+
+function showDetails(node) {
+  const d = node.data();
+  const rows = Object.entries(d.props || {})
+    .filter(([, v]) => v !== null && v !== "" && !(Array.isArray(v) && !v.length))
+    .map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(Array.isArray(v) ? v.join(", ") : typeof v === "object" ? JSON.stringify(v) : v)}</td></tr>`)
+    .join("");
+  $("details").className = "";
+  const isPb = d.type === "Playbook" && d.props?.uuid;
+  $("details").innerHTML = `<strong>${esc(d.label)}</strong> <span class="badge">${esc(LABELS[d.type] || d.type)}</span>
+    ${isPb ? `<div class="actions"><button type="button" data-act="expand">Load steps &amp; docs</button>
+              <button type="button" data-act="play">▶ Play</button></div>` : ""}<table>${rows}</table>`;
+  if (isPb) {
+    setCurrentPlaybook(d.props.uuid, d.label);
+    $("details").querySelector("[data-act=expand]").onclick = () => showPlaybook(d.props.uuid, d.label, { replace: false });
+    $("details").querySelector("[data-act=play]").onclick = () => { stopPlay(); play(); };
+  }
+}
+cy.on("tap", "node", e => showDetails(e.target));
+cy.on("tap", e => { if (e.target === cy) clearFocus(cy); });
+cy.on("dbltap", "node", e => { stopPlay(); focusNeighbors(cy, e.target); });
+
+/* ---- Double-click focus: arrange a node's direct links in a ring around it, readable and on top */
+const focusState = new Map();  // graph -> { center, saved positions }
+const LABEL_BYPASS = "text-halign text-valign text-margin-x text-margin-y";
+// Animations only advance while the page is painted; in a background tab apply end states directly.
+const animating = () => !reducedMotion && document.visibilityState === "visible";
+function clearFocus(g, animate = true) {
+  const st = focusState.get(g);
+  if (!st) return false;
+  focusState.delete(g);
+  g.elements().removeClass("faded nb nb-center force-show");
+  st.saved.forEach((pos, id) => {
+    const n = g.getElementById(id);
+    if (!n.length) return;
+    n.removeStyle(LABEL_BYPASS);
+    n.stop(true, true);
+    if (animate && animating()) n.animate({ position: pos }, { duration: 350, queue: false }); else n.position(pos);
+  });
+  return true;
+}
+function focusNeighbors(g, node) {
+  const prev = focusState.get(g);
+  clearFocus(g, false);
+  if (prev && prev.center === node.id()) return;  // double-click the same node again to restore
+  const hood = node.closedNeighborhood();
+  const ring = hood.nodes().not(node).sort((a, b) => String(a.data("type")).localeCompare(b.data("type"))
+                                                  || String(a.data("label")).localeCompare(b.data("label")));
+  const saved = new Map();
+  hood.nodes().forEach(n => saved.set(n.id(), { ...n.position() }));
+  focusState.set(g, { center: node.id(), saved });
+  g.batch(() => {
+    g.elements().addClass("faded");
+    hood.removeClass("faded").addClass("nb force-show");
+    node.addClass("nb-center");
+  });
+  // Up to PER_RING neighbours share a ring (~175px of arc each keeps labels apart); larger
+  // neighbourhoods get extra concentric rings, offset so labels in neighbouring rings don't line up.
+  const c = node.position(), count = ring.length, PER_RING = 20;
+  const rings = Math.ceil(count / PER_RING) || 1;
+  const perRing = Math.ceil(count / rings);
+  const baseRadius = Math.max(210, perRing * 175 / (2 * Math.PI));
+  ring.forEach((n, i) => {
+    const level = Math.floor(i / perRing), slot = i % perRing;
+    const inThisRing = Math.min(perRing, count - level * perRing);
+    const radius = baseRadius + level * 190;
+    const angle = -Math.PI / 2 + ((slot + (level % 2) * 0.5) * 2 * Math.PI) / Math.max(inThisRing, 1);
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    const pos = { x: c.x + radius * cos, y: c.y + radius * sin };
+    // point each label away from the centre so it never runs into the middle or its neighbours
+    n.style(Math.abs(cos) > 0.45
+      ? { "text-halign": cos > 0 ? "right" : "left", "text-valign": "center", "text-margin-x": cos > 0 ? 6 : -6, "text-margin-y": 0 }
+      : { "text-halign": "center", "text-valign": sin < 0 ? "top" : "bottom", "text-margin-x": 0, "text-margin-y": sin < 0 ? -6 : 6 });
+    n.stop(true, true);
+    if (animating()) n.animate({ position: pos }, { duration: 450, queue: false }); else n.position(pos);
+  });
+  // once the ring is in place, fit the view to it (bounding box includes labels)
+  const fitRing = () => {
+    if (focusState.get(g)?.center !== node.id()) return;
+    g.stop(true, true);
+    if (animating()) g.animate({ fit: { eles: hood, padding: 24 } }, { duration: 350, queue: false });
+    else g.fit(hood, 24);
+  };
+  if (animating()) setTimeout(fitRing, 470); else fitRing();
+}
+
+/* ---- ▶ Play: walk the playbook's steps in execution order (Auto or Manual), with a note per step */
+const BASE_STEP_MS = 2600;  // time per step at 1× (long enough to read the note)
+const player = { playing: false, ordered: [], index: 0, pb: null, timer: null, paused: false,
+                 mode: store.get("graphrag.mode") === "manual" ? "manual" : "auto" };
+let speed = Math.min(10, parseFloat(store.get("graphrag.speed")) || 1);
+$("speed").value = speed;
+const showSpeed = () => { $("speed-out").textContent = `${speed}×`; };
+showSpeed();
+const stepDelay = () => Math.round(BASE_STEP_MS / speed);
+
+function clearTimer() { if (player.timer) clearTimeout(player.timer); player.timer = null; }
+
+function stopPlay() {
+  const wasOpen = !$("player").hidden;
+  clearTimer();
+  Object.assign(player, { playing: false, ordered: [], index: 0, pb: null, paused: false });
+  cy.elements().removeClass("active visited dim");
+  $("btn-play").textContent = "▶ Play";
+  $("player").hidden = true;
+  if (wasOpen) cy.resize();
+}
+
+function parseArgs(p) { try { return JSON.parse(p.args || "{}"); } catch { return {}; } }
+/* "{{vars.input.records[0].hostname}}" -> "the record's hostname" so notes read as plain language. */
+const humanize = t => String(t ?? "")
+  .replace(/vars\.input\.records\[0\]\.(\w+)/g, "the record's $1")
+  .replace(/vars\.input\.records/g, "the input records")
+  .replace(/vars\.steps\.(\w+?)\.(?:data\.)?([\w.]+)/g, (m, step, field) => `${step.replace(/_/g, " ")} → ${field}`)
+  .replace(/\{\{\s*|\s*\}\}/g, "")
+  .trim();
+const clip = (t, n = 110) => { t = String(t ?? ""); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
+const list = xs => xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}` : xs.join("");
+
+/* Plain-language explanation of one step, built from its parsed (already scrubbed) arguments. */
+function explainStep(node, pbNode) {
+  const p = node.data("props") || {};
+  const a = parseArgs(p);
+  const pbProps = pbNode.data("props") || {};
+  const params = a.params ? Object.keys(a.params) : [];
+  let text;
+  switch (p.kind) {
+    case "trigger": {
+      const modules = a.resources?.length ? a.resources : a.resource ? [a.resource] : [];
+      const where = (a.fieldbasedtrigger?.filters || []).map(f => `${f.field} = ${f.value}`);
+      const type = pbProps.trigger_type;
+      if (type === "manual") text = `Starts when an analyst clicks “${a.title || a.executeButtonText || "Execute"}” on selected ${list(modules) || "records"}.`;
+      else if (type === "record_event") text = `Starts automatically when a record is created or updated in ${list(modules) || "a module"}${where.length ? ` where ${list(where)}` : ""}.`;
+      else if (type === "api_endpoint") text = `Starts when an external system calls the “${a.route}” API endpoint${a.authentication_methods?.length ? ` (auth: ${a.authentication_methods.join(", ")})` : ""}.`;
+      else text = "Has no trigger of its own. It starts when another playbook calls it, and receives the caller's records as vars.input.records.";
+      break;
+    }
+    case "connector": {
+      const op = node.outgoers("edge[type='USES']").targets();
+      text = `Calls ${a.connector || "a connector"} → ${a.operation || op.data("label") || "an operation"}${a.version ? ` (v${a.version})` : ""}`
+           + (params.length ? ` with ${list(params.map(k => `“${k}”`))}.` : ".");
+      break;
+    }
+    case "reference": {
+      const target = (String(a.workflowReference || "").match(/[0-9a-f-]{36}/i) || [])[0];
+      const child = target && cy.nodes().filter(n => n.data("props")?.uuid === target);
+      const childName = child?.length ? child.data("label") : "another playbook";
+      text = `Runs the child playbook “${childName}”, passes it the current records, and waits for it to finish before continuing.`;
+      break;
+    }
+    case "decision": {
+      const options = (a.conditions || []).map(c => `“${c.option}” when ${clip(humanize(c.condition), 80)}`);
+      text = `Branches the flow: ${options.length ? list(options) : "follows the first matching condition"}. Otherwise it takes the default route.`;
+      break;
+    }
+    case "manual_input":
+      text = `Pauses for a human decision: “${clip(humanize(a.title || p.name), 80)}”${a.owner ? `, assigned to ${a.owner}` : ""}${a.timeout_hours ? `, timing out after ${a.timeout_hours}h` : ""}. Nothing continues until someone responds.`;
+      break;
+    case "create_record": text = `Creates a new record in ${a.resource || "a module"}.`; break;
+    case "update_record": text = `Updates the current record${Object.keys(a).length ? ` (${list(Object.keys(a).map(k => `“${k}”`))})` : ""}.`; break;
+    case "find_records": text = `Searches ${a.resource || "records"}${a.query ? ` matching ${clip(humanize(a.query), 60)}` : ""}.`; break;
+    case "set_variable": text = `Computes and stores ${list(Object.keys(a).map(k => `“${k}”`)) || "values"} for later steps.`; break;
+    default: text = `Runs “${p.name}”${p.kind && p.kind !== "action" ? ` (${p.kind.replace(/_/g, " ")})` : ""}.`;
+  }
+  return {
+    kind: (p.kind || "step").replace(/_/g, " "),
+    text: p.description ? `${text} ${p.description}` : text,
+    warn: p.has_secret ? "A credential is hard-coded in this step (redacted at ingestion). Move it into the connector configuration." : "",
+  };
+}
+
+function highlight(node, cls, prev) {
+  const uses = node.outgoers("edge[type='USES']");
+  const op = uses.targets();
+  const of = op.outgoers("edge[type='OF']");
+  let els = node.union(uses).union(op).union(of).union(of.targets()).union(player.pb.edgesTo(node));
+  if (prev) els = els.union(prev.edgesTo(node));
+  els.removeClass("dim visited active").addClass(cls);
+}
+
+function renderNote() {
+  const { ordered, index, pb, mode, paused } = player;
+  const note = $("step-note");
+  const timed = mode === "auto" && !paused && index < ordered.length;
+  if (index >= ordered.length) {
+    note.innerHTML = `<div class="meta"><span class="kind">Finished</span><span>${ordered.length}/${ordered.length}</span></div>
+      <div class="title">${esc(pb.data("label"))}</div>
+      <div>Walked through all ${ordered.length} steps. Use ◀ Prev to review a step, or ↺ Replay to start again.</div>`;
+  } else {
+    const node = ordered[index], info = explainStep(node, pb);
+    note.innerHTML = `
+      <div class="meta"><span class="kind">${esc(info.kind)}</span><span>Step ${index + 1}/${ordered.length}${mode === "manual" ? " · manual" : paused ? " · paused" : ""}</span></div>
+      <div class="title">${esc(node.data("label"))}</div>
+      <div>${esc(info.text)}</div>
+      ${info.warn ? `<div class="warn">⚠ ${esc(info.warn)}</div>` : ""}
+      ${timed ? `<div class="progress"><span style="animation: ${reducedMotion ? "none" : `drain ${stepDelay()}ms linear forwards`}"></span></div>` : ""}`;
+  }
+  note.classList.remove("fresh"); void note.offsetWidth; note.classList.add("fresh");
+}
+
+function updateControls() {
+  const { ordered, index, mode, paused } = player;
+  const finished = index >= ordered.length;
+  $("btn-prev").disabled = index <= 0;
+  $("btn-next").disabled = finished;
+  $("btn-pause").hidden = mode !== "auto" && !finished;
+  $("btn-pause").textContent = finished ? "↺ Replay" : paused ? "▶ Resume" : "❚❚ Pause";
+  document.querySelectorAll("#player [data-mode]").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
+  $("speed").disabled = mode !== "auto";
+}
+
+/* Show step `idx` (idx === length means finished). Rebuilds highlighting so Prev works too. */
+function goTo(idx) {
+  if (!player.playing) return;
+  clearTimer();
+  const { ordered, pb } = player;
+  idx = Math.max(0, Math.min(idx, ordered.length));
+  player.index = idx;
+  cy.batch(() => {
+    cy.elements().removeClass("active visited").addClass("dim");
+    pb.removeClass("dim").addClass("visited");
+    for (let k = 0; k < Math.min(idx, ordered.length); k++) highlight(ordered[k], "visited", ordered[k - 1]);
+    if (idx < ordered.length) highlight(ordered[idx], "active", ordered[idx - 1]);
+  });
+  renderNote();
+  updateControls();
+  const focus = idx < ordered.length ? ordered[idx] : pb;
+  cy.animate({ center: { eles: focus }, duration: reducedMotion ? 0 : Math.min(350, stepDelay() / 3) });
+  if (player.mode === "auto" && !player.paused && idx < ordered.length) {
+    player.timer = setTimeout(() => goTo(idx + 1), stepDelay());
+  }
+}
+
+const stepsOf = uuid => cy.nodes("node[type='Step']").filter(n => n.data("props")?.playbook_uuid === uuid);
+async function play() {
+  if (player.playing) { stopPlay(); return; }
+  if (!currentPlaybook) return;
+  const { uuid, name } = currentPlaybook;
+  if (!stepsOf(uuid).length) await showPlaybook(uuid, name, { replace: false });
+  const ordered = stepsOf(uuid).sort((a, b) => (a.data("props").order ?? 0) - (b.data("props").order ?? 0));
+  if (!ordered.length) return;
+  if (hiddenTypes.has("Step") || hiddenTypes.has("Playbook")) {  // the walk-through needs these visible
+    hiddenTypes.delete("Step"); hiddenTypes.delete("Playbook");
+    store.set("graphrag.hidden", JSON.stringify([...hiddenTypes]));
+    applyFilter(); renderLegend();
+  }
+  Object.assign(player, { playing: true, ordered, pb: cy.nodes().filter(n => n.data("props")?.uuid === uuid), paused: false });
+  $("btn-play").textContent = "■ Stop";
+  $("player").hidden = false;
+  cy.resize();
+  goTo(0);
+}
+
+$("btn-next").onclick = () => goTo(player.index + 1);
+$("btn-prev").onclick = () => goTo(player.index - 1);
+$("btn-pause").onclick = () => {
+  if (player.index >= player.ordered.length) { player.paused = false; goTo(0); return; }  // Replay
+  player.paused = !player.paused;
+  goTo(player.index);
+};
+document.querySelectorAll("#player [data-mode]").forEach(b => b.onclick = () => {
+  player.mode = b.dataset.mode;
+  player.paused = false;
+  store.set("graphrag.mode", player.mode);
+  goTo(player.index);
+});
+$("speed").addEventListener("input", e => {
+  speed = parseFloat(e.target.value);
+  store.set("graphrag.speed", String(speed));
+  showSpeed();
+  if (player.playing && player.mode === "auto" && !player.paused) goTo(player.index);  // restart this step's countdown
+});
+document.addEventListener("keydown", e => {
+  const el = e.target instanceof Element ? e.target : null;
+  if (!player.playing || el?.closest("textarea, input, select")) return;
+  if (e.key === " " && el?.closest("button")) return;  // Space on a focused button already clicks it
+  if (e.key === "ArrowRight") { e.preventDefault(); goTo(player.index + 1); }
+  else if (e.key === "ArrowLeft") { e.preventDefault(); goTo(player.index - 1); }
+  else if (e.key === " ") { e.preventDefault(); player.mode === "auto" ? $("btn-pause").click() : goTo(player.index + 1); }
+  else if (e.key === "Escape") stopPlay();
+});
+$("btn-play").onclick = play;
+
+/* ---- Expand the graph panel to fill the window */
+function setExpanded(on) {
+  document.querySelector(".layout").classList.toggle("graph-expanded", on);
+  $("btn-expand").setAttribute("aria-pressed", String(on));
+  $("btn-expand").textContent = on ? "⤡ Collapse" : "⤢ Expand";
+  $("btn-expand").title = on ? "Restore the chat layout (Esc)" : "Enlarge the graph to fill the window (Esc to restore)";
+  requestAnimationFrame(() => {
+    cy.resize();
+    if (player.playing && player.index < player.ordered.length) cy.animate({ center: { eles: player.ordered[player.index] }, duration: 0 });
+    else cy.fit(undefined, 40);
+  });
+}
+const isExpanded = () => document.querySelector(".layout").classList.contains("graph-expanded");
+$("btn-expand").onclick = () => setExpanded(!isExpanded());
+
+/* ---- Full-screen diagram viewer */
+let viewerReturnFocus = null;
+function openViewer(title, svg) {
+  viewerReturnFocus = document.activeElement;
+  $("viewer-title").textContent = title;
+  $("viewer-body").className = "body";
+  $("viewer-body").innerHTML = svg.outerHTML;
+  $("viewer-size").textContent = "Actual size";
+  $("diagram-viewer").hidden = false;
+  $("viewer-close").focus();
+}
+function closeViewer() {
+  $("diagram-viewer").hidden = true;
+  $("viewer-body").innerHTML = "";
+  viewerReturnFocus?.focus?.();
+}
+$("viewer-close").onclick = closeViewer;
+$("viewer-size").onclick = () => {
+  const natural = $("viewer-body").classList.toggle("natural");
+  $("viewer-size").textContent = natural ? "Fit to window" : "Actual size";
+};
+
+/* Esc closes the innermost thing first: diagram viewer, then playback, then expanded graph. */
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  if (!$("diagram-viewer").hidden) { e.stopImmediatePropagation(); closeViewer(); }
+  else if (focusState.size) { e.stopImmediatePropagation(); for (const g of [...focusState.keys()]) clearFocus(g); }
+  else if (!player.playing && isExpanded()) setExpanded(false);
+}, true);
+$("btn-fit").onclick = () => cy.fit(undefined, 30);
+$("btn-clear").onclick = () => { stopPlay(); cy.elements().remove(); setCurrentPlaybook(null); $("graph-empty").style.display = "flex"; renderLegend(); };
+$("btn-overview").onclick = async () => {
+  try { setCurrentPlaybook(null); await render(await api("/graph/overview")); $("graph-title").textContent = "All playbooks"; }
+  catch (err) { $("composer-error").textContent = err.message; }
+};
+
+/* ================================================================ diagrams */
+let diagramSeq = 0;
+function diagramCard(playbooks, { autoload = true } = {}) {
+  const card = document.createElement("div");
+  card.className = "diagram";
+  const options = playbooks.map(p => `<option value="${esc(p.uuid)}">${esc(p.name)}</option>`).join("");
+  card.innerHTML = `
+    <div class="bar">
+      ${playbooks.length > 1 ? `<select aria-label="Playbook">${options}</select>` : `<strong style="font-size:13px">${esc(playbooks[0].name)}</strong>`}
+      <span class="seg" role="group" aria-label="Diagram type">
+        <button type="button" data-kind="flowchart" aria-pressed="${autoload}">Flowchart</button>
+        <button type="button" data-kind="sequence" aria-pressed="false">Sequence</button>
+      </span>
+      <span class="spacer"></span>
+      <button type="button" class="enlarge" title="Open this diagram full screen">⤢ Expand</button>
+      <button type="button" class="animate" title="Walk through this playbook step by step in the graph panel">▶ Animate</button>
+    </div>
+    <div class="canvas"><span class="muted">${autoload ? "Loading diagram…" : "Pick Flowchart or Sequence to show the workflow."}</span></div>`;
+  let kind = "flowchart";
+  const pick = () => card.querySelector("select")?.value || playbooks[0].uuid;
+  const draw = async () => {
+    const canvas = card.querySelector(".canvas");
+    canvas.innerHTML = `<span class="muted">Loading diagram…</span>`;
+    try {
+      const d = await api(`/playbooks/${encodeURIComponent(pick())}/diagram?kind=${kind}`);
+      const { svg } = await mermaid.render(`mmd-${++diagramSeq}`, d.mermaid);
+      canvas.dataset.kind = kind;
+      canvas.innerHTML = svg;
+    } catch (err) { canvas.innerHTML = `<span class="error">Diagram failed: ${esc(err.message)}</span>`; }
+  };
+  card.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
+    kind = b.dataset.kind;
+    card.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
+    draw();
+  });
+  card.querySelector("select")?.addEventListener("change", draw);
+  card.querySelector(".enlarge").onclick = () => {
+    const svg = card.querySelector(".canvas svg");
+    if (!svg) return;
+    const uuid = pick();
+    const name = playbooks.find(p => p.uuid === uuid)?.name || "";
+    openViewer(`${name} · ${kind === "sequence" ? "Sequence" : "Flowchart"}`, svg);
+  };
+  card.querySelector(".animate").onclick = async () => {
+    const uuid = pick();
+    const name = playbooks.find(p => p.uuid === uuid)?.name;
+    stopPlay();
+    if (!stepsOf(uuid).length) await showPlaybook(uuid, name, { replace: false });
+    setCurrentPlaybook(uuid, name);
+    play();
+  };
+  if (autoload) draw();
+  return card;
+}
+
+/* ================================================================ chat thread */
+const STAGES = [["rewrite", "Understand"], ["search", "Search"], ["graph", "Graph"], ["answer", "Answer"]];
+
+function renderMarkdown(text) {
+  const withCites = text.replace(/\[([CDV]\d+)\]/g, (m, l) => `<span class="cite" data-label="${l}">${l}</span>`);
+  return DOMPurify.sanitize(marked.parse(withCites, { gfm: true }));
+}
+
+function wireCitations(card, sources) {
+  const byLabel = Object.fromEntries(sources.map(s => [s.label, s]));
+  const open = async label => {
+    const s = byLabel[label];
+    if (s?.uuid && !focusPlaybook(s.uuid)) await showPlaybook(s.uuid, s.name, { replace: false });
+  };
+  card.querySelectorAll(".cite").forEach(el => el.onclick = () => open(el.dataset.label));
+  card.querySelectorAll(".source").forEach(el => el.onclick = () => open(el.dataset.label));
+}
+
+function finishCard(card, { answer, sources, standalone, question, playbooks, autoload = true }) {
+  const ans = card.querySelector(".answer");
+  ans.classList.remove("streaming");
+  ans.innerHTML = renderMarkdown(answer || "");
+  if (standalone && question && standalone.trim() !== question.trim()) {
+    card.querySelector(".standalone").innerHTML = `Interpreted as: <b>${esc(standalone)}</b>`;
+  }
+  const kind = t => ({ playbook: "playbook", vendor_doc: "vendor doc", internal_doc: "internal doc" }[t] || t);
+  card.querySelector(".sources").innerHTML = (sources || []).map(s =>
+    `<span class="source" data-label="${esc(s.label)}"><span class="cite">${esc(s.label)}</span> ${esc(s.name || s.title)} <span class="k">${kind(s.type)}</span></span>`).join("");
+  wireCitations(card, sources || []);
+  const pbs = playbooks?.length ? playbooks
+    : (sources || []).filter(s => s.type === "playbook" && s.uuid).map(s => ({ uuid: s.uuid, name: s.name }));
+  if (pbs.length) card.appendChild(diagramCard(pbs, { autoload }));
+}
+
+function botCard({ live }) {
+  const card = document.createElement("div");
+  card.className = "msg-bot";
+  card.innerHTML = `
+    ${live ? `<div class="pipeline">${STAGES.map(([k, n]) =>
+      `<div class="stage" data-stage="${k}"><span class="name">${n}</span><span class="detail">waiting</span></div>`).join("")}</div>` : ""}
+    <div class="standalone"></div>
+    <div class="answer${live ? " streaming" : ""}"></div>
+    <div class="sources"></div>`;
+  return card;
+}
+
+function addUser(text) {
+  const el = document.createElement("div");
+  el.className = "msg-user";
+  el.textContent = text;
+  $("thread").appendChild(el);
+}
+const scrollDown = () => { const t = $("thread"); t.scrollTop = t.scrollHeight; };
+
+function showEmpty() {
+  $("thread").innerHTML = `
+    <div class="empty">
+      <h2>Ask about FortiSOAR and your playbooks</h2>
+      <div class="muted">Each chat keeps its context, so you can ask follow-ups like "which of those need approval?"</div>
+      <div class="chips">
+        ${["What happens automatically when a malware alert is created?",
+           "Which playbooks call Block IP Address?",
+           "How do we remove a phishing email from every mailbox?",
+           "Which of our playbooks have approval gates?"].map(q => `<button type="button">${esc(q)}</button>`).join("")}
+      </div>
+    </div>`;
+  $("thread").querySelectorAll(".chips button").forEach(b => b.onclick = () => { $("question").value = b.textContent; send(); });
+}
+
+/* ================================================================ sessions */
+let sessions = [], currentId = null, busy = false;
+
+function ago(ts) {
+  const s = Math.max(1, Math.round(Date.now() / 1000 - ts));
+  if (s < 60) return "now"; if (s < 3600) return `${Math.round(s / 60)}m`;
+  if (s < 86400) return `${Math.round(s / 3600)}h`; return `${Math.round(s / 86400)}d`;
+}
+function renderSessions() {
+  $("sessions").innerHTML = sessions.map(s => `
+    <li data-id="${esc(s.id)}" class="${s.id === currentId ? "active" : ""}" title="Double-click to rename">
+      <span class="title">${esc(s.title)}</span><span class="when">${ago(s.updated_at)}</span>
+      <button class="del" aria-label="Delete chat" title="Delete chat">✕</button>
+    </li>`).join("") || `<li class="muted" style="cursor:default">No chats yet</li>`;
+  $("sessions").querySelectorAll("li[data-id]").forEach(li => {
+    li.onclick = e => { if (!e.target.classList.contains("del") && !busy) openSession(li.dataset.id); };
+    li.ondblclick = async () => {
+      const s = sessions.find(x => x.id === li.dataset.id);
+      const title = prompt("Rename chat", s?.title || "");
+      if (title?.trim()) { await post(`/chats/${li.dataset.id}`, { title: title.trim() }, "PATCH"); await loadSessions(); }
+    };
+    li.querySelector(".del").onclick = async () => {
+      if (busy || !confirm("Delete this chat?")) return;
+      await api(`/chats/${li.dataset.id}`, { method: "DELETE" });
+      if (li.dataset.id === currentId) { currentId = null; store.set("graphrag.chat", null); showEmpty(); }
+      await loadSessions();
+    };
+  });
+}
+async function loadSessions() { sessions = await api("/chats"); renderSessions(); }
+
+async function openSession(id) {
+  currentId = id;
+  store.set("graphrag.chat", id);
+  renderSessions();
+  const s = await api(`/chats/${id}`);
+  $("thread").innerHTML = "";
+  if (!s.messages.length) { showEmpty(); return; }
+  let lastQuestion = "";
+  s.messages.forEach((m, idx) => {
+    if (m.role === "user") { addUser(m.content); lastQuestion = m.content; return; }
+    const card = botCard({ live: false });
+    $("thread").appendChild(card);
+    // Only the latest answer renders its diagram straight away; older ones load on click.
+    finishCard(card, { answer: m.content, sources: m.sources, standalone: m.standalone, playbooks: m.playbooks,
+                       question: lastQuestion, autoload: idx === s.messages.length - 1 });
+  });
+  scrollDown();
+}
+
+$("btn-new").onclick = () => {
+  if (busy) return;
+  currentId = null; store.set("graphrag.chat", null);
+  renderSessions(); showEmpty(); $("question").focus();
+};
+
+/* ================================================================ send + stream */
+async function send() {
+  const question = $("question").value.trim();
+  $("composer-error").textContent = "";
+  if (!question) { $("composer-error").textContent = "Type a question first."; return; }
+  if (busy) return;
+  busy = true; $("btn-send").disabled = true;
+  try {
+    if (!currentId) { currentId = (await post("/chats", { title: "New chat" })).id; store.set("graphrag.chat", currentId); }
+    if ($("thread").querySelector(".empty")) $("thread").innerHTML = "";
+    $("question").value = ""; autosize();
+    addUser(question);
+    const card = botCard({ live: true });
+    $("thread").appendChild(card); scrollDown();
+    await stream(card, question);
+  } catch (err) {
+    $("composer-error").textContent = err.message;
+  } finally {
+    busy = false; $("btn-send").disabled = false;
+    loadSessions().catch(() => {});
+  }
+}
+
+async function stream(card, question) {
+  const res = await fetch(`/chats/${currentId}/messages`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }),
+  });
+  if (res.status === 401) { toLogin(); return; }
+  if (!res.ok || !res.body) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+  const ans = card.querySelector(".answer");
+  let text = "", pending = false;
+  const paint = () => { pending = false; ans.innerHTML = renderMarkdown(text); scrollDown(); };
+  const handle = ev => {
+    if (ev.type === "stage") {
+      const el = card.querySelector(`.stage[data-stage="${ev.stage}"]`);
+      if (el) {
+        el.className = `stage ${ev.status}`;
+        el.querySelector(".detail").textContent = ev.detail || (ev.status === "running" ? "working…" : "");
+        el.title = ev.detail || "";
+      }
+    } else if (ev.type === "token") {
+      text += ev.text;
+      if (!pending) { pending = true; requestAnimationFrame(paint); }
+    } else if (ev.type === "done") {
+      finishCard(card, { answer: text, sources: ev.sources, standalone: ev.standalone, playbooks: ev.playbooks, question });
+      if (ev.graph?.nodes?.length) {
+        render(ev.graph);
+        if (ev.playbooks?.length) setCurrentPlaybook(ev.playbooks[0].uuid, ev.playbooks[0].name);
+      }
+      scrollDown();
+    } else if (ev.type === "error") {
+      ans.classList.remove("streaming");
+      ans.innerHTML = `<span class="error">${esc(ev.message)}</span>`;
+      card.querySelectorAll(".stage.running").forEach(s => { s.className = "stage"; s.querySelector(".detail").textContent = "failed"; });
+    }
+  };
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let cut;
+    while ((cut = buffer.indexOf("\n\n")) >= 0) {
+      const chunk = buffer.slice(0, cut); buffer = buffer.slice(cut + 2);
+      for (const line of chunk.split("\n")) if (line.startsWith("data: ")) handle(JSON.parse(line.slice(6)));
+    }
+  }
+}
+
+const autosize = () => { const t = $("question"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 160) + "px"; };
+$("question").addEventListener("input", () => { autosize(); $("composer-error").textContent = ""; });
+$("question").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); send(); } });
+$("composer").addEventListener("submit", e => { e.preventDefault(); send(); });
+
+/* ================================================================ home: circular overview */
+const cyHome = makeGraph($("cy-home"));
+let health = null, homeLoaded = false, introTimers = [];
+const RING = { SolutionPack: 5, PlaybookCollection: 4, Playbook: 3, Module: 2, Connector: 1 };
+let homeMode = "playbooks";  // "ecosystem" when the graph is large (packs + connectors instead of playbooks)
+
+let homeChoice = store.get("graphrag.homeMode") || "auto";  // auto | ecosystem | playbooks
+async function loadHome() {
+  if (homeLoaded) return;
+  const module = ["alerts", "incidents"].includes(homeChoice) ? homeChoice : null;
+  const [overview, collections] = await Promise.all([api(module ? `/graph/module/${module}` : `/graph/overview?mode=${homeChoice}`),
+    api("/catalog/packs").then(rows => rows.filter(r => r.playbooks)).catch(() => null)]);
+  homeMode = module ? "module" : overview.mode === "ecosystem" ? "ecosystem" : "playbooks";
+  const shownPb = overview.nodes.filter(n => n.type === "Playbook").length;
+  const st = overview.stats || {};
+  document.querySelector("#home-main .bar strong").textContent = module
+    ? `${module[0].toUpperCase() + module.slice(1)} → Playbooks: ${st.playbooks} playbooks (${st.triggered} triggered by ${module}, ${st.acting} acting on them), ${st.children} child playbooks, ${st.connectors} connectors`
+    : homeMode === "ecosystem"
+    ? `Ecosystem: solution packs and the connectors they use (${overview.total_playbooks} playbooks inside)`
+    : `Playbooks: ${shownPb}${overview.total_playbooks > shownPb ? ` of ${overview.total_playbooks}` : ""} with collections, trigger modules and connectors`;
+  $("home-mode").hidden = overview.can_ecosystem === false;
+  const pressed = module || homeMode;
+  $("home-mode").querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.mode === pressed)));
+  cyHome.elements().remove();
+  cyHome.add([...overview.nodes.map(n => ({ group: "nodes", data: n })), ...overview.edges.map(e => ({ group: "edges", data: e }))]);
+  applyFilter();
+  renderLegend();
+  homeLoaded = true;
+  renderStats();
+  const list = module
+    ? overview.nodes.filter(n => n.ring === 4).sort((a, b) => a.label.localeCompare(b.label))
+        .map(n => ({ id: n.id, name: n.label, meta: n.props.relation }))
+    : homeMode === "ecosystem" && collections?.length
+    ? collections.map(c => ({ id: `sp:${c.id}`, name: c.name, meta: `${c.playbooks} playbooks · ${c.connectors.length} connectors` }))
+    : (await api("/collections")).map(c => ({ id: `col:${c.name}`, name: c.name, meta: `${c.playbooks} playbooks · ${c.internal_docs + c.vendor_docs} docs` }));
+  $("home-side").querySelector("section:last-child h2").textContent =
+    module ? `Playbooks related to ${module}` : homeMode === "ecosystem" ? "Solution packs" : "Collections";
+  $("home-collections").innerHTML = list.map(c =>
+    `<li data-name="${esc(c.id)}"><b>${esc(c.name)}</b><span>${esc(c.meta)}</span></li>`).join("")
+    || `<li class="muted">Nothing ingested yet.</li>`;
+  $("home-collections").querySelectorAll("li[data-name]").forEach(li => li.onclick = () => {
+    const node = cyHome.getElementById(li.dataset.name);
+    $("home-collections").querySelectorAll("li").forEach(x => x.classList.toggle("on", x === li));
+    if (node.length) { focusNeighbors(cyHome, node); showHomeDetails(node); }
+  });
+}
+
+function renderStats() {
+  const count = label => (health?.graph || []).find(r => r.label === label)?.count ?? 0;
+  const tiles = [...(count("SolutionPack") ? [["Solution packs", count("SolutionPack"), "--pack", "packs"]] : []),
+                 ["Playbooks", count("Playbook"), "--pb", "playbooks"], ["Collections", count("PlaybookCollection"), "--coll", "collections"],
+                 ["Connectors", count("Connector"), "--con", "connectors"], ["Documents", count("Document"), "--doc", "documents"]];
+  $("stats").innerHTML = tiles.map(([name, n, c, kind]) =>
+    `<button type="button" class="stat" data-kind="${kind}" style="--c: var(${c})" title="Open all ${name.toLowerCase()} with details">
+       <b data-to="${n}">0</b><span>${name}</span></button>`).join("");
+  $("stats").querySelectorAll(".stat").forEach(b => b.onclick = () => { location.hash = `#browse/${b.dataset.kind}`; });
+  $("stats").querySelectorAll("b").forEach(b => {  // count up
+    const to = +b.dataset.to, t0 = performance.now(), dur = reducedMotion ? 0 : 900;
+    const tick = t => { const k = dur ? Math.min(1, (t - t0) / dur) : 1; b.textContent = Math.round(to * k * (2 - k)); if (k < 1) requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  });
+}
+
+/* Concentric rings: collections in the centre, then playbooks, modules, connectors. Nodes fly out
+   from the centre and fade in ring by ring. */
+function playIntro() {
+  introTimers.forEach(clearTimeout); introTimers = [];
+  clearFocus(cyHome, false);
+  cyHome.elements().stop(true, true);
+  cyHome.resize();
+  const layout = { name: "concentric", concentric: n => n.data("ring") ?? RING[n.data("type")] ?? 0, levelWidth: () => 1,
+                   minNodeSpacing: 26, avoidOverlap: true, startAngle: 1.5 * Math.PI, padding: 40 };
+  if (!animating()) { cyHome.elements().removeStyle("opacity"); cyHome.layout({ ...layout, animate: false }).run(); return; }
+  cyHome.batch(() => { cyHome.nodes().positions(() => ({ x: 0, y: 0 })); cyHome.elements().style("opacity", 0); });
+  cyHome.layout({ ...layout, animate: true, animationDuration: 1100, animationEasing: "ease-out-cubic" }).run();
+  const ringOf = n => n.data("ring") ?? RING[n.data("type")] ?? 0;
+  [...new Set(cyHome.nodes().map(ringOf))].sort((a, b) => b - a).forEach((level, ring) => {
+    cyHome.nodes().filter(n => ringOf(n) === level).forEach((n, i) => introTimers.push(setTimeout(() =>
+      n.animate({ style: { opacity: 1 } }, { duration: 350, queue: false, complete: () => n.removeStyle("opacity") }), ring * 280 + i * 18)));
+  });
+  introTimers.push(setTimeout(() => cyHome.edges().forEach(e =>
+    e.animate({ style: { opacity: 1 } }, { duration: 600, queue: false, complete: () => e.removeStyle("opacity") })), 1100));
+}
+
+function showHomeDetails(node) {
+  const d = node.data(), props = d.props || {};
+  const catalogLink = d.type === "SolutionPack" ? `#browse/packs/${encodeURIComponent(props.repo)}`
+    : d.type === "Connector" ? `#browse/connectors/${encodeURIComponent(props.name || d.label)}`
+    : d.type === "Playbook" ? `#browse/playbooks/${encodeURIComponent(props.uuid)}`
+    : d.type === "PlaybookCollection" ? `#browse/collections/${encodeURIComponent(d.label)}` : "";
+  const linked = node.neighborhood("node");
+  const by = t => linked.filter(n => n.data("type") === t).map(n => n.data("label"));
+  const rows = [["Type", LABELS[d.type] || d.type], ["Collection", props.collection], ["Trigger", props.trigger_type],
+                ["Relation", props.relation], ["Kind", props.kind?.replace("_", " ")], ["Version", props.version],
+                ["Playbooks in pack", props.playbooks], ["Solution packs", by("SolutionPack").join(", ")],
+                ["Playbooks", by("Playbook").join(", ")], ["Connectors", by("Connector").join(", ")],
+                ["Modules", by("Module").join(", ")]]
+    .filter(([, v]) => v).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(v)}</td></tr>`).join("");
+  const ask = d.type === "SolutionPack" ? `What does the "${d.label}" solution pack do, which playbooks does it include and which connectors does it need?`
+            : d.type === "Playbook" ? `Explain the playbook "${d.label}": what triggers it, its steps, what it calls and which docs describe it.`
+            : d.type === "PlaybookCollection" ? `Summarise the "${d.label}" collection: its playbooks, how they connect, and the related docs.`
+            : `Which of our playbooks use ${d.label}, and how?`;
+  $("home-details").className = "";
+  $("home-details").innerHTML = `<strong>${esc(d.label)}</strong><table>${rows}</table>
+    <div class="actions"><button class="primary" type="button" data-act="ask">Ask about this in chat →</button>
+    <button type="button" data-act="focus">Focus links</button>
+    ${d.type === "SolutionPack" ? `<button type="button" data-act="expand">Show its playbooks</button>` : ""}
+    ${catalogLink ? `<a class="pill" href="${catalogLink}">Open in Catalog →</a>` : ""}</div>`;
+  $("home-details").querySelector("[data-act=ask]").onclick = () => startChatAbout(ask);
+  $("home-details").querySelector("[data-act=focus]").onclick = () => focusNeighbors(cyHome, node);
+  $("home-details").querySelector("[data-act=expand]")?.addEventListener("click", async () => {
+    const pack = await api(`/packs/${encodeURIComponent(props.repo)}`);
+    await setHomeMode("playbooks", (pack.collections || []).map(c => `col:${c.name}`));
+  });
+}
+cyHome.on("tap", "node", e => showHomeDetails(e.target));
+cyHome.on("tap", e => { if (e.target === cyHome) { clearFocus(cyHome); $("home-collections").querySelectorAll("li").forEach(x => x.classList.remove("on")); } });
+cyHome.on("dbltap", "node", e => { showHomeDetails(e.target); focusNeighbors(cyHome, e.target); });
+$("btn-replay").onclick = playIntro;
+async function setHomeMode(mode, focusIds = []) {
+  homeChoice = mode; store.set("graphrag.homeMode", mode);
+  homeLoaded = false;
+  clearFocus(cyHome, false);
+  await loadHome(); playIntro();
+  if (focusIds.length) setTimeout(() => {
+    const nodes = cyHome.collection(focusIds.map(id => cyHome.getElementById(id)).filter(n => n.length));
+    if (!nodes.length) return;
+    if (nodes.length === 1) { showHomeDetails(nodes[0]); focusNeighbors(cyHome, nodes[0]); return; }
+    // several collections: highlight them and their playbooks together
+    const hood = nodes.closedNeighborhood();
+    cyHome.elements().addClass("faded"); hood.removeClass("faded").addClass("nb force-show"); nodes.addClass("nb-center");
+    focusState.set(cyHome, { center: "multi", saved: new Map() });
+    cyHome.animate({ fit: { eles: hood, padding: 40 } }, { duration: reducedMotion ? 0 : 400, queue: false });
+  }, reducedMotion ? 0 : 1700);
+}
+$("home-mode").querySelectorAll("button").forEach(b => b.onclick = () => setHomeMode(b.dataset.mode));
+$("btn-home-fit").onclick = () => { clearFocus(cyHome, false); cyHome.fit(undefined, 40); };
+$("btn-start-chat").onclick = () => { location.hash = "#chat"; };
+
+function startChatAbout(question) {
+  pendingQuestion = question;
+  currentId = null; store.set("graphrag.chat", null);
+  location.hash = "#chat";
+  if (chatBooted) runPending();
+}
+let pendingQuestion = null;
+function runPending() {
+  if (!pendingQuestion) return;
+  const q = pendingQuestion; pendingQuestion = null;
+  currentId = null; renderSessions(); showEmpty();
+  $("question").value = q;
+  send();
+}
+
+/* ================================================================ catalog */
+let pendingHomeFocus = null;
+const enc = encodeURIComponent;
+const link = (kind, id, text) => `<a href="#browse/${kind}/${enc(id)}">${esc(text ?? id)}</a>`;
+const pills = (xs, kind) => (xs || []).map(x => kind ? `<a class="pill" href="#browse/${kind}/${enc(x)}">${esc(x)}</a>` : `<span class="pill">${esc(x)}</span>`).join("");
+const listCell = (xs, max = 2) => xs?.length
+  ? `${xs.length} <span class="sub">${esc(xs.slice(0, max).join(", "))}${xs.length > max ? ", …" : ""}</span>` : `<span class="sub">–</span>`;
+
+const ROW_CAP = 300;  // rows rendered at once; search or filter to narrow large tabs
+const CATALOG = {
+  packs: { title: "Solution packs", color: "--pack", placeholder: "Search solution packs, categories, connectors…",
+    filter: { label: "All kinds", key: "kind" },
+    columns: [
+      ["name", "Solution pack", r => `<b>${esc(r.name)}</b>${r.description ? `<div class="sub">${esc(r.description.slice(0, 110))}${r.description.length > 110 ? "…" : ""}</div>` : ""}`],
+      ["kind", "Kind", r => `<span class="pill">${esc((r.kind || "").replace("_", " "))}</span>${r.version ? `<div class="sub">v${esc(r.version)}</div>` : ""}`],
+      ["playbooks", "Playbooks", r => r.playbooks, "num"],
+      ["collections", "Collections", r => r.collections, "num"],
+      ["connectors", "Connectors", r => listCell(r.connectors)],
+      ["depends_on", "Depends on", r => listCell(r.depends_on)],
+      ["docs", "Docs", r => r.docs, "num"],
+    ],
+    text: r => [r.name, r.id, r.kind, r.category, r.description, ...(r.connectors || []), ...(r.depends_on || [])] },
+  playbooks: { title: "Playbooks", color: "--pb", placeholder: "Search playbooks, packs, collections, triggers, connectors…",
+    filter: { label: "All sources", key: "pack_type", labels: { solution_pack: "Solution packs", connector: "Connector samples", ai: "AI packs" } },
+    columns: [
+      ["name", "Name", r => `<b>${esc(r.name)}</b>${r.description ? `<div class="sub">${esc(r.description.slice(0, 90))}${r.description.length > 90 ? "…" : ""}</div>` : ""}`],
+      ["collection", "Collection", r => `${esc(r.collection || "–")}${r.pack_type ? `<div class="sub">${esc(r.pack_type.replace("_", " "))}</div>` : ""}`],
+      ["trigger", "Trigger", r => `${esc((r.trigger || "").replace("_", " "))}${r.modules?.length ? `<div class="sub">${esc(r.modules.join(", "))}</div>` : ""}`],
+      ["steps", "Steps", r => r.steps, "num"],
+      ["connectors", "Connectors", r => listCell(r.connectors)],
+      ["called_by", "Called by", r => r.called_by, "num"],
+      ["internal_docs", "Runbooks", r => r.internal_docs, "num"],
+      ["vendor_docs", "Vendor docs", r => r.vendor_docs, "num"],
+      ["has_secret", "Secrets", r => r.has_secret ? `<span class="pill warn" title="A step hard-codes a credential (redacted)">⚠ hard-coded</span>` : ""],
+    ],
+    text: r => [r.name, r.collection, r.pack, r.trigger, r.description, ...(r.modules || []), ...(r.connectors || [])] },
+  collections: { title: "Collections", color: "--coll", placeholder: "Search collections or their playbooks…",
+    columns: [
+      ["name", "Name", r => `<b>${esc(r.name)}</b>`],
+      ["playbooks", "Playbooks", r => listCell(r.playbooks, 3)],
+      ["connectors", "Connectors", r => listCell(r.connectors, 3)],
+      ["internal_docs", "Runbooks", r => r.internal_docs, "num"],
+      ["vendor_docs", "Vendor docs", r => r.vendor_docs, "num"],
+    ],
+    text: r => [r.name, ...(r.playbooks || []), ...(r.connectors || [])] },
+  connectors: { title: "Connectors", color: "--con", placeholder: "Search connectors, operations, playbooks…",
+    columns: [
+      ["name", "Connector", r => `<b>${esc(r.label || r.name)}</b><div class="sub">${esc(r.name)}${r.version ? ` · v${esc(r.version)}` : ""}${r.category ? ` · ${esc(r.category)}` : ""}</div>`],
+      ["operations", "Operations", r => (r.operations || []).map(o => `<span class="pill">${esc(o)}</span>`).join("")],
+      ["playbooks", "Used by", r => listCell(r.playbooks)],
+      ["samples", "Samples", r => r.samples || "", "num"],
+      ["docs", "Vendor docs", r => r.docs?.length ? esc(r.docs.join(", ")) : `<span class="sub">no doc</span>`],
+    ],
+    text: r => [r.name, r.label, r.category, ...(r.operations || []), ...(r.playbooks || []), ...(r.docs || [])] },
+  documents: { title: "Documents", color: "--doc", placeholder: "Search document titles or linked playbooks…",
+    filter: { label: "All kinds", key: "kind", labels: { connector: "Connector reference", connector_readme: "Connector README",
+                                                       solution_pack: "Solution pack docs", widget: "Widget docs", ai: "AI pack docs" } },
+    columns: [
+      ["name", "Title", r => `<b>${esc(r.name)}</b><div class="sub">${esc(r.path || "")}</div>`],
+      ["kind", "Kind", r => `<span class="pill">${esc((r.kind || r.source || "").replace("_", " "))}</span>${r.version ? `<div class="sub">v${esc(r.version)}</div>` : ""}`],
+      ["chunks", "Chunks", r => r.chunks, "num"],
+      ["documents", "Describes", r => listCell(r.documents)],
+      ["referenced_by", "Referenced by", r => listCell(r.referenced_by)],
+      ["pending_links", "To review", r => r.pending_links ? `<span class="pill warn">${r.pending_links} proposed</span>` : "", "num"],
+    ],
+    text: r => [r.name, r.path, r.source, r.kind, r.pack, ...(r.documents || []), ...(r.referenced_by || [])] },
+};
+const catalogData = {};
+const browse = { kind: "playbooks", id: null, sort: null, dir: 1 };
+
+async function openCatalog(kind, id) {
+  if (!CATALOG[kind]) { location.replace("#browse/playbooks"); return; }
+  const kindChanged = browse.kind !== kind;
+  browse.kind = kind; browse.id = id;
+  if (kindChanged) { browse.sort = null; browse.dir = 1; $("browse-search").value = ""; $("browse-filter").value = ""; }
+  renderTabs();
+  if (!catalogData[kind]) {
+    $("browse-table").innerHTML = `<tbody><tr><td class="muted">Loading…</td></tr></tbody>`;
+    try { catalogData[kind] = await api(`/catalog/${kind}`); }
+    catch (err) { $("browse-table").innerHTML = `<tbody><tr><td class="error">${esc(err.message)}</td></tr></tbody>`; return; }
+    renderTabs();
+  }
+  renderFilter(); renderTable();
+  if (id) await showCatalogDetail(kind, id);
+  else $("browse-detail").innerHTML = `<div class="muted">Select a row to see everything linked to it.</div>`;
+}
+
+function renderTabs() {
+  const counts = { packs: "SolutionPack", playbooks: "Playbook", collections: "PlaybookCollection", connectors: "Connector", documents: "Document" };
+  $("browse-tabs").innerHTML = Object.entries(CATALOG).map(([k, c]) => {
+    const n = catalogData[k]?.length ?? (health?.graph || []).find(r => r.label === counts[k])?.count ?? "";
+    return `<a href="#browse/${k}" style="--c: var(${c.color})" aria-current="${k === browse.kind ? "page" : "false"}">${c.title}<b>${n}</b></a>`;
+  }).join("");
+}
+
+function renderFilter() {
+  const cfg = CATALOG[browse.kind].filter, sel = $("browse-filter");
+  sel.hidden = !cfg;
+  $("browse-search").placeholder = CATALOG[browse.kind].placeholder;
+  if (!cfg) return;
+  const values = [...new Set((catalogData[browse.kind] || []).map(r => r[cfg.key]).filter(Boolean))].sort();
+  const current = sel.value;
+  sel.innerHTML = `<option value="">${cfg.label}</option>` +
+    values.map(v => `<option value="${esc(v)}">${esc(cfg.labels?.[v] || v)}</option>`).join("");
+  sel.value = values.includes(current) ? current : "";
+}
+
+function renderTable() {
+  const cfg = CATALOG[browse.kind], rows = catalogData[browse.kind] || [];
+  const q = $("browse-search").value.trim().toLowerCase(), f = cfg.filter && $("browse-filter").value;
+  let shown = rows.filter(r => (!q || cfg.text(r).filter(Boolean).join(" ").toLowerCase().includes(q)) && (!f || r[cfg.filter.key] === f));
+  if (browse.sort) {
+    const key = browse.sort, val = r => Array.isArray(r[key]) ? r[key].length : typeof r[key] === "boolean" ? +r[key] : r[key] ?? "";
+    shown = [...shown].sort((a, b) => { const x = val(a), y = val(b); return (typeof x === "number" && typeof y === "number" ? x - y : String(x).localeCompare(String(y))) * browse.dir; });
+  }
+  const total = shown.length;
+  if (total > ROW_CAP) {  // keep the DOM small; the selected row is always included
+    const selected = shown.find(r => r.id === browse.id || r.name === browse.id);
+    shown = shown.slice(0, ROW_CAP);
+    if (selected && !shown.includes(selected)) shown.unshift(selected);
+  }
+  $("browse-count").textContent = total > ROW_CAP ? `showing ${ROW_CAP} of ${total} matches (${rows.length} total), refine the search`
+                                                  : `${total} of ${rows.length}`;
+  $("browse-table").innerHTML = `
+    <thead><tr>${cfg.columns.map(([key, label, , cls]) =>
+      `<th data-key="${key}" class="${cls || ""}" aria-sort="${browse.sort === key ? (browse.dir > 0 ? "ascending" : "descending") : "none"}">${label}</th>`).join("")}</tr></thead>
+    <tbody>${shown.map(r => `<tr data-id="${esc(r.id)}" class="${r.id === browse.id || r.name === browse.id ? "on" : ""}">
+      ${cfg.columns.map(([, , cell, cls]) => `<td class="${cls || ""}">${cell(r)}</td>`).join("")}</tr>`).join("")
+      || `<tr><td colspan="${cfg.columns.length}" class="muted">Nothing matches.</td></tr>`}</tbody>`;
+  $("browse-table").querySelectorAll("th").forEach(th => th.onclick = () => {
+    browse.dir = browse.sort === th.dataset.key ? -browse.dir : 1; browse.sort = th.dataset.key; renderTable();
+  });
+  $("browse-table").querySelectorAll("tbody tr[data-id]").forEach(tr => tr.onclick = e => {
+    if (e.target.closest("a")) return;
+    location.hash = `#browse/${browse.kind}/${enc(tr.dataset.id)}`;
+  });
+}
+$("browse-search").addEventListener("input", renderTable);
+$("browse-filter").addEventListener("change", renderTable);
+$("browse-refresh").onclick = () => { delete catalogData[browse.kind]; openCatalog(browse.kind, browse.id); };
+
+async function showCatalogDetail(kind, id) {
+  const panel = $("browse-detail");
+  panel.innerHTML = `<div class="muted">Loading…</div>`;
+  try {
+    if (kind === "packs") panel.innerHTML = packDetail(await api(`/packs/${enc(id)}`));
+    else if (kind === "playbooks") panel.innerHTML = playbookDetail(await api(`/playbooks/${enc(id)}`));
+    else if (kind === "collections") panel.innerHTML = collectionDetail(await api(`/collections/${enc(id)}`));
+    else if (kind === "connectors") panel.innerHTML = connectorDetail(await api(`/connectors/${enc(id)}`), catalogData.connectors?.find(r => r.id === id));
+    else panel.innerHTML = documentDetail(await api(`/documents?id=${enc(id)}`));
+  } catch (err) { panel.innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
+  wireDetail(kind, id);
+  panel.scrollTop = 0;
+  if (matchMedia("(max-width: 900px)").matches) panel.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
+}
+
+const section = (title, body) => body ? `<h3>${title}</h3>${body}` : "";
+const ul = items => items.length ? `<ul>${items.join("")}</ul>` : "";
+
+function playbookDetail(p) {
+  if (p.error) return `<div class="error">${esc(p.error)}</div>`;
+  const connectorOf = op => (op || "").split(".")[0];
+  const steps = (p.steps || []).map(s => `<li><b>${esc(s.name)}</b> <span class="pill">${esc((s.kind || "").replace("_", " "))}</span>
+      ${s.operation ? link("connectors", connectorOf(s.operation), s.operation) : ""}
+      ${s.has_secret ? `<span class="pill warn">⚠ hard-coded secret</span>` : ""}</li>`).join("");
+  return `
+    <h2>${esc(p.name)}</h2>
+    <div>${p.collection ? link("collections", p.collection) : ""} <span class="pill">${esc((p.trigger_type || "").replace("_", " "))}</span>
+      ${(p.modules || []).map(m => `<span class="pill">${esc(m)}</span>`).join("")}
+      ${p.active === false ? `<span class="pill warn">inactive</span>` : ""}</div>
+    ${p.description ? `<p>${esc(p.description)}</p>` : ""}
+    <div class="actions">
+      <button class="primary" data-act="ask">Ask about this in chat →</button>
+      <button data-act="diagram" data-kind="flowchart">Flowchart</button>
+      <button data-act="diagram" data-kind="sequence">Sequence</button>
+      ${homeMode !== "ecosystem" ? `<button data-act="home">Show on Home</button>` : ""}
+    </div>
+    <div data-slot="diagram"></div>
+    ${section(`Steps (${(p.steps || []).length})`, steps ? `<ol>${steps}</ol>` : "")}
+    ${section("Calls", ul((p.calls || []).map(n => `<li>${link("playbooks", n)}</li>`)))}
+    ${section("Called by", ul((p.called_by || []).map(n => `<li>${link("playbooks", n)}</li>`)))}
+    ${section("Runbooks (internal docs)", ul((p.docs || []).map(d => `<li>${link("documents", d.id, d.title)}${d.status !== "approved" ? ` <span class="pill">${esc(d.status)}</span>` : ""}</li>`))) || section("Runbooks (internal docs)", `<div class="muted">No runbook linked yet.</div>`)}
+    ${section("Vendor docs", ul((p.references || []).map(d => `<li>${link("documents", d.id, d.title)} <span class="sub">${esc((d.reasons || []).join("; "))}</span></li>`)))}`;
+}
+
+const extLink = (url, text) => url ? `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(text)} ↗</a>` : "";
+
+function packDetail(p) {
+  const colls = (p.collections || []).map(c => `<li><b>${link("collections", c.name)}</b> <span class="sub">${c.playbooks.length} playbooks</span>
+    ${ul(c.playbooks.slice(0, 40).map(pb => `<li>${link("playbooks", pb.uuid, pb.name)} <span class="pill">${esc((pb.trigger || "").replace("_", " "))}</span></li>`))}
+    ${c.playbooks.length > 40 ? `<div class="sub">…and ${c.playbooks.length - 40} more (open the collection)</div>` : ""}</li>`).join("");
+  return `
+    <h2>${esc(p.label)}</h2>
+    <div><span class="pill">${esc((p.kind || "").replace("_", " "))}</span>${p.version ? `<span class="pill">v${esc(p.version)}</span>` : ""}
+      ${p.category ? `<span class="pill">${esc(p.category)}</span>` : ""} ${extLink(p.url, "GitHub")}</div>
+    ${p.description ? `<p>${esc(p.description)}</p>` : ""}
+    <div class="actions"><button class="primary" data-act="ask">Ask about this in chat →</button>${homeMode === "ecosystem" ? `<button data-act="home">Show on Home</button>` : ""}</div>
+    ${section("Depends on", ul((p.depends_on || []).map(d => `<li>${link("packs", d.repo, d.label)}</li>`)))}
+    ${section("Required by", ul((p.required_by || []).map(d => `<li>${link("packs", d.repo, d.label)}</li>`)))}
+    ${section(`Connectors used (${(p.connectors || []).length})`, (p.connectors || []).map(c => `<a class="pill" href="#browse/connectors/${enc(c)}">${esc(c)}</a>`).join(""))}
+    ${section("Documentation", ul((p.docs || []).map(d => `<li>${link("documents", d.id, d.title)}</li>`)))}
+    ${section(`Collections and playbooks (${(p.collections || []).length})`, colls ? `<ul>${colls}</ul>` : "")}`;
+}
+
+function collectionDetail(c) {
+  if (c.error) return `<div class="error">${esc(c.error)}</div>`;
+  return `
+    <h2>${esc(c.name)}</h2>
+    <div class="actions"><button class="primary" data-act="ask">Ask about this in chat →</button>${homeMode !== "ecosystem" ? `<button data-act="home">Show on Home</button>` : ""}</div>
+    ${section(`Playbooks (${c.playbooks.length})`, ul(c.playbooks.map(p => `<li>${link("playbooks", p.uuid, p.name)} <span class="pill">${esc((p.trigger || "").replace("_", " "))}</span></li>`)))}
+    ${section(`Runbooks (${c.internal_docs.length})`, ul(c.internal_docs.map(d => `<li>${link("documents", d.id, d.title)}<div class="sub">via ${esc((d.playbooks || []).join(", "))}</div></li>`)))}
+    ${section(`Vendor docs (${c.vendor_docs.length})`, ul(c.vendor_docs.map(d => `<li>${link("documents", d.id, d.title)} <span class="sub">${(d.playbooks || []).length} playbook(s)</span></li>`)))}`;
+}
+
+function connectorDetail(c, row) {
+  const ops = (c.operations || []).map(o => `<li><b>${esc(o.title || o.operation)}</b> <span class="sub">${esc(o.operation)}</span>
+    ${o.description ? `<div class="sub">${esc(o.description.slice(0, 220))}</div>` : ""}${ul(o.uses.slice(0, 25).map(u =>
+    `<li>${link("playbooks", u.uuid, u.playbook)} <span class="sub">step “${esc(u.step)}”${u.version ? ` · v${esc(u.version)}` : ""}</span>
+     ${u.has_secret ? `<span class="pill warn">⚠ hard-coded secret</span>` : ""}</li>`))}</li>`).join("");
+  const vendor = (c.docs || []).filter(d => d.source === "vendor"), internal = (c.docs || []).filter(d => d.source !== "vendor");
+  return `
+    <h2>${esc(c.label || c.name)}</h2>
+    <div><span class="pill">${esc(c.name)}</span>${c.version ? `<span class="pill">v${esc(c.version)}</span>` : ""}
+      ${c.category ? `<span class="pill">${esc(c.category)}</span>` : ""} ${extLink(c.url, "GitHub")} ${extLink(c.help_url, "Online docs")}</div>
+    ${c.description ? `<p>${esc(c.description)}</p>` : ""}
+    <div class="muted">${(row?.playbooks || []).length} playbook(s) use this connector${(c.samples || []).length ? `; sample playbooks in ${c.samples.map(x => link("collections", x)).join(", ")}` : ""}.</div>
+    <div class="actions"><button class="primary" data-act="ask">Ask about this in chat →</button><button data-act="home">Show on Home</button></div>
+    ${section("Operations and where they're used", ops ? `<ul>${ops}</ul>` : "")}
+    ${section("Vendor docs", ul(vendor.map(d => `<li>${link("documents", d.id, d.title)}</li>`))) || section("Vendor docs", `<div class="muted">No vendor doc mentions this connector.</div>`)}
+    ${section("Internal docs mentioning it", ul(internal.map(d => `<li>${link("documents", d.id, d.title)}</li>`)))}`;
+}
+
+function documentDetail(d) {
+  const links = (d.links || []).map(l => `<li>${link("playbooks", l.uuid, l.playbook)}
+      <span class="pill ${l.status === "approved" ? "ok" : l.status === "proposed" ? "warn" : ""}">${esc(l.status)}</span>
+      <span class="sub">${esc(l.method || "")}${l.confidence != null ? ` · ${(+l.confidence).toFixed(2)}` : ""}</span></li>`);
+  const refs = (d.references || []).map(r => `<li>${link("playbooks", r.uuid, r.playbook)} <span class="sub">${esc((r.reasons || []).join("; "))}</span></li>`);
+  const explains = (d.explains || []).map(e => e.startsWith("connector:")
+    ? `<a class="pill" href="#browse/connectors/${enc(e.slice(10))}">${esc(e.slice(10))}</a>` : `<span class="pill">${esc(e.slice(8))}</span>`).join("");
+  return `
+    <h2>${esc(d.title)}</h2>
+    <div><span class="pill">${esc((d.kind || d.source || "").replace("_", " "))}</span>${d.version ? `<span class="pill">v${esc(d.version)}</span>` : ""}
+      <span class="sub">${esc(d.path || "")}</span> ${extLink(d.url, "GitHub")} ${extLink(d.help_url, "Online docs")}</div>
+    ${(d.owners || []).length ? `<div class="sub" style="margin-top:6px">Documents ${(d.owners || []).map(o => o.type === "Connector"
+        ? link("connectors", o.id, o.label) : link("packs", o.id, o.label)).join(", ")}</div>` : ""}
+    <div class="actions"><button class="primary" data-act="ask">Ask about this in chat →</button></div>
+    ${section("Describes playbooks", ul(links))}
+    ${section("Referenced by playbooks", ul(refs))}
+    ${section("Mentions", explains)}
+    <h3>Content</h3>
+    <div class="doc-text">${DOMPurify.sanitize(marked.parse(d.text || "", { gfm: true }))}</div>`;
+}
+
+function wireDetail(kind, id) {
+  const panel = $("browse-detail");
+  const name = panel.querySelector("h2")?.textContent || id;
+  const questions = {
+    playbooks: `Explain the playbook "${name}": what triggers it, its steps, what it calls and which docs describe it.`,
+    collections: `Summarise the "${name}" collection: its playbooks, how they connect, and the related docs.`,
+    connectors: `Which of our playbooks use the ${name} connector, which operations, and what do the docs say about it?`,
+    packs: `What does the "${name}" solution pack do, which playbooks and connectors does it include, and what does it depend on?`,
+    documents: `Summarise the document "${name}" and how it relates to our playbooks.`,
+  };
+  panel.querySelector("[data-act=ask]")?.addEventListener("click", () => startChatAbout(questions[kind]));
+  panel.querySelector("[data-act=home]")?.addEventListener("click", async () => {
+    pendingHomeFocus = kind === "packs" ? `sp:${id}` : kind === "collections" ? `col:${name}` : kind === "connectors" ? `con:${id}`
+      : `pb:${kind === "playbooks" ? (await api(`/playbooks/${enc(id)}`)).uuid : id}`;
+    location.hash = "#home";
+  });
+  panel.querySelectorAll("[data-act=diagram]").forEach(b => b.addEventListener("click", async () => {
+    const slot = panel.querySelector("[data-slot=diagram]");
+    slot.innerHTML = `<div class="muted">Loading diagram…</div>`;
+    try {
+      const d = await api(`/playbooks/${enc(id)}/diagram?kind=${b.dataset.kind}`);
+      const { svg } = await mermaid.render(`mmd-${++diagramSeq}`, d.mermaid);
+      slot.innerHTML = `<div class="canvas">${svg}</div>`;
+    } catch (err) { slot.innerHTML = `<div class="error">Diagram failed: ${esc(err.message)}</div>`; }
+  }));
+}
+
+/* ================================================================ guide */
+const NODE_INFO = {
+  SolutionPack: "A Content Hub solution pack (or AI pack) from a GitHub repo: label, version, category, description.",
+  PlaybookCollection: "A folder of playbooks; solution-pack collections are named “Pack · Collection”.",
+  Playbook: "A workflow: trigger type, description, pack, an embedded summary for search.",
+  Step: "One step of a playbook: kind, name, scrubbed arguments, order, has_secret.",
+  ConnectorOperation: "A connector action (connector.operation) with title, description and parameters.",
+  Connector: "An integration: label, version, category, publisher, description, links to GitHub and online docs.",
+  Module: "A FortiSOAR record type that triggers or feeds playbooks (alerts, incidents…).",
+  Document: "A README, docs page, generated connector reference or widget doc.",
+  Chunk: "A ~1,200-character passage of a document with its embedding.",
+  Concept: "A FortiSOAR concept mentioned in documents (Approval, Jinja, Connector…).",
+};
+let guideRendered = false;
+const num = n => (n ?? 0).toLocaleString();
+const rowsTable = (head, rows) => `<tr>${head.map(h => `<th>${h}</th>`).join("")}</tr>` +
+  (rows.length ? rows.map(r => `<tr>${r.map((c, i) => `<td class="${typeof c === "number" ? "num" : ""}">${typeof c === "number" ? num(c) : c}</td>`).join("")}</tr>`).join("")
+               : `<tr><td colspan="${head.length}" class="muted">none</td></tr>`);
+
+async function renderGuide() {
+  const toc = $("guide-toc");
+  if (toc.children.length === 1) {
+    document.querySelectorAll("#guide h2").forEach(h => {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = h.textContent; b.dataset.target = h.id;
+      b.onclick = () => document.getElementById(h.id).scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
+      toc.appendChild(b);
+    });
+    $("guide-body").addEventListener("scroll", () => {
+      let current = null;
+      document.querySelectorAll("#guide h2").forEach(h => { if (h.getBoundingClientRect().top < 140) current = h.id; });
+      toc.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.target === current));
+    });
+  }
+  if (guideRendered) return;
+  let a;
+  try { a = await api("/about"); } catch (err) { $("g-status").innerHTML = `<span class="error">Couldn't load live statistics: ${esc(err.message)}</span>`; return; }
+  guideRendered = true;
+  const count = label => a.nodes.find(n => n.label === label)?.count ?? 0;
+  $("g-cards").innerHTML = [["Solution packs", count("SolutionPack")], ["Playbooks", a.playbooks.loaded], ["Steps", count("Step")],
+    ["Collections", count("PlaybookCollection")], ["Connectors", count("Connector")], ["Documents", count("Document")]]
+    .map(([l, n]) => `<div class="card"><b>${num(n)}</b><span>${l}</span></div>`).join("");
+  const src = a.source || {};
+  const partial = a.chunks.chunks === 0 || (src.present && a.playbooks.loaded < 1000);
+  $("g-status").className = `callout ${partial ? "warn" : ""}`;
+  $("g-status").innerHTML = `<b>Current dataset:</b> ${num(a.playbooks.loaded)} playbooks (${a.by_source.map(r => `${num(r.count)} from ${esc(r.source.replace("_", " "))}`).join(", ") || "none"}),
+    ${num(count("SolutionPack"))} solution packs, ${num(count("Connector"))} connectors, ${num(count("Document"))} documents with ${num(a.chunks.chunks)} searchable chunks.
+    ${a.chunks.chunks === 0 ? " No documents are loaded, so answers draw on playbook structure but not on documentation." : ""}
+    ${src.present && a.playbooks.loaded < 1000 ? " This is a partial load of the downloaded GitHub content (loading stopped when the embedding quota ran out)." : ""}`;
+  $("g-generated").textContent = `generated ${new Date(a.generated_at).toLocaleString()}`;
+  $("g-source-live").innerHTML = src.present ? `<table>
+      <tr><th>Organisation</th><td><a href="https://github.com/${esc(src.org)}" target="_blank" rel="noopener noreferrer">github.com/${esc(src.org)} ↗</a></td></tr>
+      <tr><th>Repos in the org</th><td>${num(src.repos_listed)} (${Object.entries(src.repos_by_prefix).sort((x, y) => y[1] - x[1]).map(([k, v]) => `${esc(k)}: ${v}`).join(", ")})</td></tr>
+      <tr><th>Repos downloaded</th><td>${num(src.repos_downloaded)}, of which ${num(src.from_release_branch)} came from a release/x.y.z branch</td></tr>
+      <tr><th>Content files kept</th><td>${num(src.files_kept)}</td></tr>
+      <tr><th>Last fetch</th><td>${esc(new Date(src.last_fetch).toLocaleString())}</td></tr></table>`
+    : `<div class="callout warn">No GitHub download found in <code>data/fortinet/</code>; the graph was loaded from local exports.</div>`;
+  $("g-nodes").innerHTML = rowsTable(["Type", "Count"], a.nodes.map(n => [`<span class="swatch" style="--c: var(${(TYPES[n.label] || ["--muted"])[0]})"></span>${esc(LABELS[n.label] || n.label)}`, n.count]));
+  $("g-playbooks").innerHTML = rowsTable(["", "Count"], [["Loaded", a.playbooks.loaded], ["With an embedding (searchable by meaning)", a.playbooks.embedded],
+    ["Placeholders (called but not loaded)", a.playbooks.placeholders], ["Steps with a hard-coded credential", a.secrets.steps],
+    ["Playbooks with a hard-coded credential", a.secrets.playbooks], ...a.by_source.map(r => [`From ${esc(r.source.replace("_", " "))}`, r.count])]);
+  $("g-rels").innerHTML = rowsTable(["Relationship", "From", "To", "Count"], a.relationships.map(r => [`<code>${esc(r.type)}</code>`, esc(LABELS[r.source] || r.source), esc(LABELS[r.target] || r.target), r.count]));
+  $("g-steps").innerHTML = rowsTable(["Kind", "Steps"], a.step_kinds.map(r => [esc((r.kind || "?").replace("_", " ")), r.count]));
+  $("g-triggers").innerHTML = rowsTable(["Trigger", "Playbooks"], a.triggers.map(r => [esc((r.trigger || "?").replace("_", " ")), r.count]));
+  $("g-top-packs").innerHTML = rowsTable(["Solution pack", "Playbooks"], a.top_packs.map(r => [esc(r.label), r.playbooks]));
+  $("g-top-connectors").innerHTML = rowsTable(["Connector", "Steps using it"], a.top_connectors.map(r => [esc(r.label), r.steps]));
+  $("g-node-types").innerHTML = rowsTable(["Type", "What it holds", "Count"], Object.keys(NODE_INFO).map(t =>
+    [`<span class="swatch" style="--c: var(${(TYPES[t] || ["--muted"])[0]})"></span>${esc(LABELS[t] || t)}`, NODE_INFO[t], count(t)]));
+  $("g-legend").innerHTML = rowsTable(["Colour", "Node type", "Size"], Object.entries(TYPES).map(([t, [c, size]]) =>
+    [`<span class="swatch" style="--c: var(${c})"></span>`, esc(LABELS[t] || t), `${size}px`]));
+  $("g-config-live").innerHTML = `<b>This instance:</b> mode <code>${esc(a.config.mode)}</code>, language model <code>${esc(a.config.llm)}</code>, embeddings <code>${esc(a.config.embeddings)}</code>, graph <code>${esc(a.config.neo4j)}</code>.`;
+
+  const relCount = (type, s, t) => a.relationships.filter(r => r.type === type && (!s || r.source === s) && (!t || r.target === t)).reduce((x, r) => x + r.count, 0);
+  const n = t => `${LABELS[t] || t}<br/>${num(count(t))}`;
+  const model = `flowchart LR
+    SP(("${n("SolutionPack")}")):::pack -->|"INCLUDES ${num(relCount("INCLUDES"))}"| COL(("${n("PlaybookCollection")}")):::coll
+    SP -.->|"DEPENDS_ON ${num(relCount("DEPENDS_ON"))}"| SP
+    COL -->|"CONTAINS ${num(relCount("CONTAINS"))}"| PB(("${n("Playbook")}")):::pb
+    PB -->|"HAS_STEP ${num(relCount("HAS_STEP"))}"| ST(("${n("Step")}")):::step
+    ST -.->|"NEXT ${num(relCount("NEXT"))}"| ST
+    ST -->|"USES ${num(relCount("USES"))}"| OP(("${n("ConnectorOperation")}")):::op
+    OP -->|"OF ${num(relCount("OF"))}"| CON(("${n("Connector")}")):::con
+    PB -->|"CALLS ${num(relCount("CALLS"))}"| PB
+    PB -->|"TRIGGERED_ON ${num(relCount("TRIGGERED_ON"))}"| MOD(("${n("Module")}")):::mod
+    CON -->|"HAS_SAMPLES ${num(relCount("HAS_SAMPLES"))}"| COL
+    CON -->|"DOCUMENTED_BY ${num(relCount("DOCUMENTED_BY", "Connector"))}"| DOC(("${n("Document")}")):::doc
+    SP -->|"DOCUMENTED_BY ${num(relCount("DOCUMENTED_BY", "SolutionPack"))}"| DOC
+    PB -->|"REFERENCES ${num(relCount("REFERENCES", "Playbook"))}"| DOC
+    DOC -->|"HAS_CHUNK ${num(relCount("HAS_CHUNK"))}"| CH(("${n("Chunk")}")):::step
+    CH -->|"EXPLAINS ${num(relCount("EXPLAINS"))}"| CON
+    classDef pack fill:#FAECE7,stroke:#993C1D,color:#4A1B0C
+    classDef coll fill:#E6F1FB,stroke:#185FA5,color:#042C53
+    classDef pb fill:#EEEDFE,stroke:#534AB7,color:#26215C
+    classDef step fill:#F1EFE8,stroke:#5F5E5A,color:#2C2C2A
+    classDef op fill:#E1F5EE,stroke:#0F6E56,color:#04342C
+    classDef con fill:#E1F5EE,stroke:#085041,color:#04342C
+    classDef mod fill:#FAEEDA,stroke:#854F0B,color:#412402
+    classDef doc fill:#FBEAF0,stroke:#993556,color:#4B1528`;
+  const pipeline = `flowchart LR
+    GH(("GitHub org<br/>fortinet-fortisoar")) --> F["fetch_fortinet.py<br/>tarballs, content files only<br/>release-branch fallback"]
+    F --> D[("data/fortinet/github")]
+    D --> P["Parse<br/>playbooks, steps, routes<br/>infer step kinds and triggers"]
+    P --> S["Scrub<br/>secrets, IPs, emails<br/>flag literal credentials"]
+    S --> G[("Neo4j graph")]
+    D --> M["Connector and pack metadata<br/>info.json"] --> G
+    D --> X["Docs to chunks<br/>EXPLAINS links"] --> G
+    G --> L["Derived links<br/>REFERENCES, rollups"] --> G
+    G --> E["Embeddings and indexes<br/>vector + full-text"] --> G
+    G --> UI["Home · Catalog · Chat · Guide"]`;
+  for (const [id, code] of [["g-model-diagram", model], ["g-pipeline", pipeline]]) {
+    try { $(id).innerHTML = (await mermaid.render(`mmd-${++diagramSeq}`, code)).svg; }
+    catch (err) { $(id).innerHTML = `<span class="error">Diagram failed: ${esc(err.message)}</span>`; }
+  }
+}
+
+/* ================================================================ router + boot */
+let chatBooted = false;
+async function bootChat() {
+  chatBooted = true;
+  await loadSessions();
+  if (pendingQuestion) { runPending(); return; }
+  const saved = store.get("graphrag.chat");
+  if (saved && sessions.some(s => s.id === saved)) await openSession(saved); else showEmpty();
+}
+function parseHash() {
+  const [view, kind, ...rest] = location.hash.replace(/^#/, "").split("/");
+  return { view: ["home", "browse", "chat", "guide"].includes(view) ? view : "home", kind, id: rest.length ? decodeURIComponent(rest.join("/")) : null };
+}
+async function route() {
+  const r = parseHash();
+  await showView(r.view);
+  if (r.view === "browse") await openCatalog(r.kind, r.id);
+}
+async function showView(name) {
+  $("view-home").hidden = name !== "home";
+  $("view-browse").hidden = name !== "browse";
+  $("view-guide").hidden = name !== "guide";
+  $("view-chat").hidden = name !== "chat";
+  document.querySelectorAll(".nav a").forEach(a => a.setAttribute("aria-current", a.dataset.view === name ? "page" : "false"));
+  if (name === "home") {
+    stopPlay();
+    try {
+      await loadHome(); playIntro();
+      if (pendingHomeFocus) {
+        const id = pendingHomeFocus; pendingHomeFocus = null;
+        setTimeout(() => { const n = cyHome.getElementById(id); if (n.length) { showHomeDetails(n); focusNeighbors(cyHome, n); } }, reducedMotion ? 0 : 1700);
+      }
+    }
+    catch (err) { $("home-details").innerHTML = `<span class="error">Couldn't load playbooks: ${esc(err.message)}</span>`; }
+  } else if (name === "browse") {
+    stopPlay();
+  } else if (name === "guide") {
+    stopPlay();
+    renderGuide();
+  } else {
+    requestAnimationFrame(() => cy.resize());
+    if (!chatBooted) await bootChat();
+  }
+}
+window.addEventListener("hashchange", route);
+$("btn-logout").onclick = async () => { await fetch("/auth/logout", { method: "POST" }).catch(() => {}); toLogin(); };
+
+(async () => {
+  try {
+    const me = await api("/auth/me");
+    $("user").textContent = me.user ? `Signed in as ${me.user}` : "";
+    $("pw-notice").hidden = !me.default_password;
+    health = await api("/health");
+    $("mode").textContent = `${health.config.mode} · ${health.config.llm}`;
+  } catch (err) {
+    if (err.message === "Signed out") return;
+    $("mode").textContent = "not ready";
+    $("home-details").innerHTML = `<span class="error">App is not ready: ${esc(err.message)}</span>`;
+    $("view-home").hidden = false;
+    return;
+  }
+  route();
+})();
+</script>
+</body>
+</html>

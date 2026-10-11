@@ -1,0 +1,297 @@
+{
+  "type": "workflow_collections",
+  "data": [
+    {
+      "@type": "WorkflowCollection",
+      "name": "SOC - Network",
+      "description": "Network blocking",
+      "workflows": [
+        {
+          "@type": "Workflow",
+          "uuid": "c6c0351f-e678-55e6-b95e-69fe1a192307",
+          "name": "Block IP Address",
+          "description": "Adds an IP to the FortiGate blocked address group unless it is on the allow list (jump host 10.20.30.40 is never blocked).",
+          "isActive": true,
+          "recordTags": [
+            "Network",
+            "Containment",
+            "Subroutine"
+          ],
+          "triggerStep": "/api/3/workflow_steps/12a4df07-260e-544e-a307-d72c38bf01d1",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "12a4df07-260e-544e-a307-d72c38bf01d1",
+              "name": "Start",
+              "arguments": {
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records}}"
+                  }
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "9fb7edbb-05e9-5785-a219-ae824afa13a3",
+              "name": "Check Allow List",
+              "arguments": {
+                "conditions": [
+                  {
+                    "option": "Allowed",
+                    "condition": "{{vars.input.records[0].ip in ['10.20.30.40', '192.168.10.5']}}"
+                  }
+                ]
+              },
+              "stepType": {
+                "name": "Decision"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "e5cf7271-e711-5a07-8602-9e47a2ef578a",
+              "name": "Block on FortiGate",
+              "arguments": {
+                "connector": "fortinet-fortigate",
+                "operation": "block_ip",
+                "version": "4.1.0",
+                "params": {
+                  "ip": "{{vars.input.records[0].ip}}",
+                  "address_group": "SOAR-Blocked",
+                  "password": "Fg-Adm1n-2026!"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "d27be826-29c5-5fcb-8559-01e962063d09",
+              "name": "Tag Indicator",
+              "arguments": {
+                "tags": [
+                  "Blocked"
+                ]
+              },
+              "stepType": {
+                "name": "Update Record"
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/12a4df07-260e-544e-a307-d72c38bf01d1",
+              "targetStep": "/api/3/workflow_steps/9fb7edbb-05e9-5785-a219-ae824afa13a3"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/9fb7edbb-05e9-5785-a219-ae824afa13a3",
+              "targetStep": "/api/3/workflow_steps/e5cf7271-e711-5a07-8602-9e47a2ef578a"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/e5cf7271-e711-5a07-8602-9e47a2ef578a",
+              "targetStep": "/api/3/workflow_steps/d27be826-29c5-5fcb-8559-01e962063d09"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "fd967b56-fd75-5825-8327-50a09166aa40",
+          "name": "Block Domain",
+          "description": "Blocks a domain in Cisco Umbrella and adds it to the FortiGate web filter.",
+          "isActive": true,
+          "recordTags": [
+            "Network",
+            "Containment",
+            "Subroutine"
+          ],
+          "triggerStep": "/api/3/workflow_steps/50c5550c-2d25-5aa4-aff6-872af890a8c3",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "50c5550c-2d25-5aa4-aff6-872af890a8c3",
+              "name": "Start",
+              "arguments": {
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records}}"
+                  }
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "a90f8930-fe9c-5c91-9abe-8757b5523877",
+              "name": "Umbrella Block",
+              "arguments": {
+                "connector": "cisco-umbrella",
+                "operation": "block_domain",
+                "version": "1.1.0",
+                "params": {
+                  "domain": "{{vars.input.records[0].domain}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "86059bec-ff4a-5147-a796-9ad0c53a9ac7",
+              "name": "FortiGate URL Filter",
+              "arguments": {
+                "connector": "fortinet-fortigate",
+                "operation": "block_url",
+                "version": "4.1.0",
+                "params": {
+                  "url": "{{vars.input.records[0].domain}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/50c5550c-2d25-5aa4-aff6-872af890a8c3",
+              "targetStep": "/api/3/workflow_steps/a90f8930-fe9c-5c91-9abe-8757b5523877"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/a90f8930-fe9c-5c91-9abe-8757b5523877",
+              "targetStep": "/api/3/workflow_steps/86059bec-ff4a-5147-a796-9ad0c53a9ac7"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "617e2df7-b657-5455-9370-99848d59f4a4",
+          "name": "Webhook - External IOC Submission",
+          "description": "API endpoint for partner teams to submit IOCs; routes IPs and domains to the blocking playbooks.",
+          "isActive": true,
+          "recordTags": [
+            "Threat Intel",
+            "API"
+          ],
+          "triggerStep": "/api/3/workflow_steps/4edc2aa9-5d9e-586b-99e1-4155ab839110",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "4edc2aa9-5d9e-586b-99e1-4155ab839110",
+              "name": "Start",
+              "arguments": {
+                "route": "ioc-submit",
+                "authentication_methods": [
+                  "api_key"
+                ],
+                "resources": []
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "a63df44f-7448-56ce-b019-3cbd56b1a1a8",
+              "name": "Create Indicator Records",
+              "arguments": {
+                "resource": "indicators",
+                "body": "{{vars.request.data}}"
+              },
+              "stepType": {
+                "name": "Create Record"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "b6e41716-c270-59db-988a-61623180dcc3",
+              "name": "Block Submitted IPs",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/c6c0351f-e678-55e6-b95e-69fe1a192307",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "148de64d-89a8-5c65-8cb2-cb01634884b4",
+              "name": "Block Submitted Domains",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/fd967b56-fd75-5825-8327-50a09166aa40",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/4edc2aa9-5d9e-586b-99e1-4155ab839110",
+              "targetStep": "/api/3/workflow_steps/a63df44f-7448-56ce-b019-3cbd56b1a1a8"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/a63df44f-7448-56ce-b019-3cbd56b1a1a8",
+              "targetStep": "/api/3/workflow_steps/b6e41716-c270-59db-988a-61623180dcc3"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/b6e41716-c270-59db-988a-61623180dcc3",
+              "targetStep": "/api/3/workflow_steps/148de64d-89a8-5c65-8cb2-cb01634884b4"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "24f94fab-4008-5a09-ab9f-fbbdc62e6509",
+          "name": "Threat Intel Feed - IOC Ingestion",
+          "description": "Pulls the partner threat feed hourly and creates indicator records for new IOCs.",
+          "isActive": true,
+          "recordTags": [
+            "Threat Intel",
+            "Ingestion"
+          ],
+          "triggerStep": "/api/3/workflow_steps/1e20b430-7279-57e3-afbe-19bdf03e8893",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "1e20b430-7279-57e3-afbe-19bdf03e8893",
+              "name": "Start",
+              "arguments": {
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records}}"
+                  }
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "c33d0bf9-9afe-57e7-a041-9ab025277007",
+              "name": "Fetch Feed",
+              "arguments": {
+                "connector": "http-request",
+                "operation": "get",
+                "version": "1.0.0",
+                "params": {
+                  "url": "https://feeds.acme-tenant.example/iocs",
+                  "headers": {
+                    "Authorization": "Bearer eyJhbGciOiJIUzI1NiJ9.ZmVlZC10b2tlbg.c2lnbmF0dXJl"
+                  }
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "c5bbba64-6c28-5ec7-a67c-e5f7808ee50d",
+              "name": "Create Indicators",
+              "arguments": {
+                "resource": "indicators"
+              },
+              "stepType": {
+                "name": "Create Record"
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/1e20b430-7279-57e3-afbe-19bdf03e8893",
+              "targetStep": "/api/3/workflow_steps/c33d0bf9-9afe-57e7-a041-9ab025277007"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/c33d0bf9-9afe-57e7-a041-9ab025277007",
+              "targetStep": "/api/3/workflow_steps/c5bbba64-6c28-5ec7-a67c-e5f7808ee50d"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

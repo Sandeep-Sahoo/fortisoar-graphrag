@@ -1,0 +1,223 @@
+{
+  "type": "workflow_collections",
+  "data": [
+    {
+      "@type": "WorkflowCollection",
+      "name": "SOC - Phishing Response",
+      "description": "Phishing handling",
+      "workflows": [
+        {
+          "@type": "Workflow",
+          "uuid": "e75a55d5-cb24-58ef-bc60-baea77759b66",
+          "name": "Phishing - Analyse Email Attachments",
+          "description": "Manually detonates attachments from a reported phishing email in FortiSandbox and enriches embedded URLs.",
+          "isActive": true,
+          "recordTags": [
+            "Phishing",
+            "Sandbox"
+          ],
+          "triggerStep": "/api/3/workflow_steps/90d2625b-b8ee-5700-b860-ccef22a4ac5b",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "90d2625b-b8ee-5700-b860-ccef22a4ac5b",
+              "name": "Start",
+              "arguments": {
+                "route": "f49871f0-9a13-4767-bbb0-9355b48e057b",
+                "resources": [
+                  "alerts"
+                ],
+                "title": "Analyse Attachments",
+                "executeButtonText": "Analyse Attachments"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "68238fc8-24b7-5a2f-a687-6e779e0b1178",
+              "name": "Submit Attachment to Sandbox",
+              "arguments": {
+                "connector": "fortinet-fortisandbox",
+                "operation": "submit_file",
+                "version": "3.2.0",
+                "params": {
+                  "file": "{{vars.input.records[0].attachment}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "41523258-80b8-5ffe-abdb-fa24b42fbe77",
+              "name": "Get Sandbox Verdict",
+              "arguments": {
+                "connector": "fortinet-fortisandbox",
+                "operation": "get_file_verdict",
+                "version": "3.2.0",
+                "params": {
+                  "sha256": "{{vars.steps.Submit_Attachment_to_Sandbox.data.sha256}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "7f5ec084-7bbf-5e74-85d2-3d417be38cd7",
+              "name": "Is Attachment Malicious",
+              "arguments": {
+                "conditions": [
+                  {
+                    "option": "Malicious",
+                    "condition": "{{vars.steps.Get_Sandbox_Verdict.data.rating == 'Malicious'}}"
+                  }
+                ]
+              },
+              "stepType": {
+                "name": "Decision"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "3ce5d460-a4eb-5cc2-a5f9-39122d29883b",
+              "name": "Enrich Embedded URLs",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/11111111-1111-4111-8111-111111111111",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "f5ba32b6-d3aa-5497-b2bb-1db46b4f57d7",
+              "name": "Purge From Mailboxes",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/81325a26-0101-583c-8147-f00937a90fda",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/90d2625b-b8ee-5700-b860-ccef22a4ac5b",
+              "targetStep": "/api/3/workflow_steps/68238fc8-24b7-5a2f-a687-6e779e0b1178"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/68238fc8-24b7-5a2f-a687-6e779e0b1178",
+              "targetStep": "/api/3/workflow_steps/41523258-80b8-5ffe-abdb-fa24b42fbe77"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/41523258-80b8-5ffe-abdb-fa24b42fbe77",
+              "targetStep": "/api/3/workflow_steps/7f5ec084-7bbf-5e74-85d2-3d417be38cd7"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/7f5ec084-7bbf-5e74-85d2-3d417be38cd7",
+              "targetStep": "/api/3/workflow_steps/3ce5d460-a4eb-5cc2-a5f9-39122d29883b",
+              "label": "Malicious"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/3ce5d460-a4eb-5cc2-a5f9-39122d29883b",
+              "targetStep": "/api/3/workflow_steps/f5ba32b6-d3aa-5497-b2bb-1db46b4f57d7"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "81325a26-0101-583c-8147-f00937a90fda",
+          "name": "Phishing - Purge Malicious Email",
+          "description": "Searches FortiMail for all copies of a malicious message and deletes them after analyst approval.",
+          "isActive": true,
+          "recordTags": [
+            "Phishing",
+            "Remediation"
+          ],
+          "triggerStep": "/api/3/workflow_steps/2551c2d7-0a43-53a8-a8ab-fe272b5a2940",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "2551c2d7-0a43-53a8-a8ab-fe272b5a2940",
+              "name": "Start",
+              "arguments": {
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records}}"
+                  }
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "2e5bf5d0-6f12-5eab-981a-e0f8e1bd403f",
+              "name": "Search Message Copies",
+              "arguments": {
+                "connector": "fortinet-fortimail",
+                "operation": "search_message",
+                "version": "2.1.0",
+                "params": {
+                  "subject": "{{vars.input.records[0].emailSubject}}",
+                  "sender": "{{vars.input.records[0].sender}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "41c22d6d-15c7-5af0-8e37-0e945a45da4a",
+              "name": "Approve Purge",
+              "arguments": {
+                "title": "Purge {{vars.steps.Search_Message_Copies.data.count}} messages?",
+                "owner": "SOC Tier 2",
+                "timeout_hours": 4
+              },
+              "stepType": {
+                "name": "Manual Input"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "86c30ba1-bccd-5af4-b0c3-2136ae631db2",
+              "name": "Delete Messages",
+              "arguments": {
+                "connector": "fortinet-fortimail",
+                "operation": "delete_message",
+                "version": "2.1.0",
+                "params": {
+                  "message_ids": "{{vars.steps.Search_Message_Copies.data.ids}}",
+                  "api_key": "fm-API-7f3a9c2e1b8d4f60a5e2c7b9d1f3a8e6c4b2d0f9"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "cf99776d-b206-597b-a64a-11ca7e121fb4",
+              "name": "Add Purge Note",
+              "arguments": {
+                "resource": "comments",
+                "content": "Purged message copies"
+              },
+              "stepType": {
+                "name": "Create Record"
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/2551c2d7-0a43-53a8-a8ab-fe272b5a2940",
+              "targetStep": "/api/3/workflow_steps/2e5bf5d0-6f12-5eab-981a-e0f8e1bd403f"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/2e5bf5d0-6f12-5eab-981a-e0f8e1bd403f",
+              "targetStep": "/api/3/workflow_steps/41c22d6d-15c7-5af0-8e37-0e945a45da4a"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/41c22d6d-15c7-5af0-8e37-0e945a45da4a",
+              "targetStep": "/api/3/workflow_steps/86c30ba1-bccd-5af4-b0c3-2136ae631db2"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/86c30ba1-bccd-5af4-b0c3-2136ae631db2",
+              "targetStep": "/api/3/workflow_steps/cf99776d-b206-597b-a64a-11ca7e121fb4"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

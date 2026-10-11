@@ -1,0 +1,53 @@
+{
+  "type": "workflow_collections",
+  "data": [
+    {
+      "@type": "WorkflowCollection",
+      "name": "SOC - Phishing Response",
+      "description": "Sample collection for parser tests",
+      "workflows": [
+        {
+          "@type": "Workflow",
+          "uuid": "11111111-1111-4111-8111-111111111111",
+          "name": "Enrich Indicators",
+          "description": "Gets reputation for indicators. Referenced by triage playbooks.",
+          "isActive": true,
+          "recordTags": ["Enrichment", "Subroutine"],
+          "triggerStep": "/api/3/workflow_steps/aaaaaaaa-0000-4000-8000-000000000001",
+          "steps": [
+            {"uuid": "aaaaaaaa-0000-4000-8000-000000000001", "name": "Start", "arguments": {"step_variables": {"input": {"records": "{{vars.input.records}}"}}}},
+            {"uuid": "aaaaaaaa-0000-4000-8000-000000000002", "name": "Get URL Reputation", "description": "Query VirusTotal",
+             "arguments": {"connector": "virustotal", "operation": "get_reputation_of_url", "version": "2.5.0", "config": "a3c9e1f2-5d7b-4c8a-9e1f-2b3c4d5e6f70", "params": {"url": "{{vars.input.records[0].url}}", "api_key": "AIzaSyD-FAKE-KEY-1234567890abcdefghij"}}},
+            {"uuid": "aaaaaaaa-0000-4000-8000-000000000003", "name": "Is Malicious", "stepType": {"name": "Decision"}, "arguments": {"conditions": [{"option": "Malicious", "condition": "{{vars.steps.Get_URL_Reputation.data.positives > 3}}"}]}},
+            {"uuid": "aaaaaaaa-0000-4000-8000-000000000004", "name": "Update Severity", "stepType": {"name": "Update Record"}, "arguments": {"resource": {"severity": "/api/3/picklists/high"}}}
+          ],
+          "routes": [
+            {"sourceStep": "/api/3/workflow_steps/aaaaaaaa-0000-4000-8000-000000000001", "targetStep": "/api/3/workflow_steps/aaaaaaaa-0000-4000-8000-000000000002"},
+            {"sourceStep": "/api/3/workflow_steps/aaaaaaaa-0000-4000-8000-000000000002", "targetStep": "/api/3/workflow_steps/aaaaaaaa-0000-4000-8000-000000000003"},
+            {"sourceStep": "/api/3/workflow_steps/aaaaaaaa-0000-4000-8000-000000000003", "targetStep": "/api/3/workflow_steps/aaaaaaaa-0000-4000-8000-000000000004", "label": "Malicious"}
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "22222222-2222-4222-8222-222222222222",
+          "name": "Alert Triage - Phishing",
+          "description": "Triage phishing alerts reported from mailbox soc@acme-tenant.example; jump host 10.20.30.40.",
+          "isActive": true,
+          "recordTags": ["Phishing"],
+          "triggerStep": "/api/3/workflow_steps/bbbbbbbb-0000-4000-8000-000000000001",
+          "steps": [
+            {"uuid": "bbbbbbbb-0000-4000-8000-000000000001", "name": "On Alert Create", "arguments": {"resource": "alerts", "resources": ["alerts"], "fieldbasedtrigger": {"filters": [{"field": "type", "value": "Phishing"}]}}},
+            {"uuid": "bbbbbbbb-0000-4000-8000-000000000002", "name": "Enrich", "arguments": {"workflowReference": "/api/3/workflows/11111111-1111-4111-8111-111111111111", "arguments": {"records": "{{vars.input.records}}"}}},
+            {"uuid": "bbbbbbbb-0000-4000-8000-000000000003", "name": "Block Sender IP", "arguments": {"connector": "fortinet-fortigate", "operation": "block_ip", "version": "4.1.0", "params": {"ip": "{{vars.input.records[0].sourceIp}}", "password": "Sup3rS3cret!"}}},
+            {"uuid": "bbbbbbbb-0000-4000-8000-000000000004", "name": "Notify SOC", "arguments": {"connector": "smtp", "operation": "send_email", "params": {"to": "soc-lead@acme-tenant.example", "body": "Bearer eyJhbGciOiJIUzI1NiJ9.payload.sig"}}}
+          ],
+          "routes": [
+            {"sourceStep": "/api/3/workflow_steps/bbbbbbbb-0000-4000-8000-000000000001", "targetStep": "/api/3/workflow_steps/bbbbbbbb-0000-4000-8000-000000000002"},
+            {"sourceStep": "/api/3/workflow_steps/bbbbbbbb-0000-4000-8000-000000000002", "targetStep": "/api/3/workflow_steps/bbbbbbbb-0000-4000-8000-000000000003"},
+            {"sourceStep": "/api/3/workflow_steps/bbbbbbbb-0000-4000-8000-000000000003", "targetStep": "/api/3/workflow_steps/bbbbbbbb-0000-4000-8000-000000000004"}
+          ]
+        }
+      ]
+    }
+  ]
+}

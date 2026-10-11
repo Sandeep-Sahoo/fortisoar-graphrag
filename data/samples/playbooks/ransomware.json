@@ -1,0 +1,526 @@
+{
+  "type": "workflow_collections",
+  "data": [
+    {
+      "@type": "WorkflowCollection",
+      "name": "SOC - Ransomware",
+      "description": "Ransomware detection, containment and recovery",
+      "workflows": [
+        {
+          "@type": "Workflow",
+          "uuid": "4a88fe02-b9a0-552e-bbbe-a5f0ce46a8ba",
+          "name": "Ransomware - Detection Triage",
+          "description": "Triages FortiEDR anti-ransomware events: confirms encryption activity, opens a P1 ticket, pages on-call and starts containment.",
+          "isActive": true,
+          "recordTags": [
+            "Ransomware",
+            "EDR"
+          ],
+          "triggerStep": "/api/3/workflow_steps/1f291666-0ad4-543d-acc3-b6ea29994dba",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "1f291666-0ad4-543d-acc3-b6ea29994dba",
+              "name": "Start",
+              "arguments": {
+                "resource": "alerts",
+                "resources": [
+                  "alerts"
+                ],
+                "fieldbasedtrigger": {
+                  "filters": [
+                    {
+                      "field": "type",
+                      "value": "Ransomware"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "fc651dc2-ff1b-5dda-ad4e-dbbd2d40c189",
+              "name": "Get FortiEDR Event",
+              "arguments": {
+                "connector": "fortinet-fortiedr",
+                "operation": "get_event",
+                "version": "2.0.0",
+                "params": {
+                  "event_id": "{{vars.input.records[0].sourceId}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "ab64daa8-43a3-5dc9-ac4e-fd3457d63c76",
+              "name": "Encryption Confirmed?",
+              "arguments": {
+                "conditions": [
+                  {
+                    "option": "Confirmed",
+                    "condition": "{{vars.steps.Get_FortiEDR_Event.data.classification == 'Malicious'}}"
+                  }
+                ]
+              },
+              "stepType": {
+                "name": "Decision"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "e2194d5a-1b9a-5ece-a15c-172b461742a2",
+              "name": "Open P1 Ticket",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/60f0b79e-65c1-5934-ab18-7b3c7218bdb5",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "24b2496d-0d44-5e53-8196-d6da0e45fbdd",
+              "name": "Page On-Call",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/4cf2d919-9337-513b-b3a1-f77e28d3bb86",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "6726354e-575f-59f8-84d4-d29675a2a3ea",
+              "name": "Start Containment",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/c189d285-1df6-50f7-a430-efac955f47db",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/1f291666-0ad4-543d-acc3-b6ea29994dba",
+              "targetStep": "/api/3/workflow_steps/fc651dc2-ff1b-5dda-ad4e-dbbd2d40c189"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/fc651dc2-ff1b-5dda-ad4e-dbbd2d40c189",
+              "targetStep": "/api/3/workflow_steps/ab64daa8-43a3-5dc9-ac4e-fd3457d63c76"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/ab64daa8-43a3-5dc9-ac4e-fd3457d63c76",
+              "targetStep": "/api/3/workflow_steps/e2194d5a-1b9a-5ece-a15c-172b461742a2",
+              "label": "Confirmed"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/e2194d5a-1b9a-5ece-a15c-172b461742a2",
+              "targetStep": "/api/3/workflow_steps/24b2496d-0d44-5e53-8196-d6da0e45fbdd"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/24b2496d-0d44-5e53-8196-d6da0e45fbdd",
+              "targetStep": "/api/3/workflow_steps/6726354e-575f-59f8-84d4-d29675a2a3ea"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "c189d285-1df6-50f7-a430-efac955f47db",
+          "name": "Ransomware - Contain Outbreak",
+          "description": "After incident-commander approval, isolates the first host, disables the user, quarantines agentless servers via FortiNAC and maps the blast radius.",
+          "isActive": true,
+          "recordTags": [
+            "Ransomware",
+            "Containment"
+          ],
+          "triggerStep": "/api/3/workflow_steps/39c1ae7b-888a-587f-962b-79b1d9abbd1c",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "39c1ae7b-888a-587f-962b-79b1d9abbd1c",
+              "name": "Start",
+              "arguments": {
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records}}"
+                  }
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "b9b4b471-7cd8-5feb-a424-0caa0852b2cd",
+              "name": "Incident Commander Approval",
+              "arguments": {
+                "title": "Contain ransomware on {{vars.input.records[0].hostname}}?",
+                "owner": "Incident Commander",
+                "timeout_hours": 1
+              },
+              "stepType": {
+                "name": "Manual Input"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "d7ea350b-64ff-5b82-ab3c-15a2ceda1871",
+              "name": "Isolate First Host",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/7ba4ba22-a1f3-5cbc-b971-1799ab587a02",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "b9ce98ad-689d-5263-a5eb-f76c16e7a87c",
+              "name": "Disable Affected User",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/3ec93934-fb2c-59d1-9507-ee5390a74fd1",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "639c1cbf-4a73-5a33-bc97-f5715116eb14",
+              "name": "Has EDR Agent?",
+              "arguments": {
+                "conditions": [
+                  {
+                    "option": "No agent",
+                    "condition": "{{vars.input.records[0].edrAgent == false}}"
+                  }
+                ]
+              },
+              "stepType": {
+                "name": "Decision"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "7f1d36ce-923f-5bad-a96d-394bb260ec04",
+              "name": "Quarantine Server via NAC",
+              "arguments": {
+                "connector": "fortinet-fortinac",
+                "operation": "quarantine_host",
+                "version": "1.3.0",
+                "params": {
+                  "ip_address": "{{vars.input.records[0].sourceIp}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "45948103-1209-52bb-ad16-081b9b1a1fc0",
+              "name": "Map Blast Radius",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/e46b53cb-6370-5ce7-adf9-c80fb866c19b",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/39c1ae7b-888a-587f-962b-79b1d9abbd1c",
+              "targetStep": "/api/3/workflow_steps/b9b4b471-7cd8-5feb-a424-0caa0852b2cd"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/b9b4b471-7cd8-5feb-a424-0caa0852b2cd",
+              "targetStep": "/api/3/workflow_steps/d7ea350b-64ff-5b82-ab3c-15a2ceda1871"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/d7ea350b-64ff-5b82-ab3c-15a2ceda1871",
+              "targetStep": "/api/3/workflow_steps/b9ce98ad-689d-5263-a5eb-f76c16e7a87c"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/b9ce98ad-689d-5263-a5eb-f76c16e7a87c",
+              "targetStep": "/api/3/workflow_steps/639c1cbf-4a73-5a33-bc97-f5715116eb14"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/639c1cbf-4a73-5a33-bc97-f5715116eb14",
+              "targetStep": "/api/3/workflow_steps/7f1d36ce-923f-5bad-a96d-394bb260ec04",
+              "label": "No agent"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/7f1d36ce-923f-5bad-a96d-394bb260ec04",
+              "targetStep": "/api/3/workflow_steps/45948103-1209-52bb-ad16-081b9b1a1fc0"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "e46b53cb-6370-5ce7-adf9-c80fb866c19b",
+          "name": "Ransomware - Identify Blast Radius",
+          "description": "Hunts the encryptor hash across all endpoints and searches Splunk for SMB lateral movement from the first host.",
+          "isActive": true,
+          "recordTags": [
+            "Ransomware",
+            "Hunting"
+          ],
+          "triggerStep": "/api/3/workflow_steps/c8c783f9-ce7c-5a65-a26c-8553579af661",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "c8c783f9-ce7c-5a65-a26c-8553579af661",
+              "name": "Start",
+              "arguments": {
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records}}"
+                  }
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "aca939e9-ffcc-5580-b66e-e4c538f4b7aa",
+              "name": "Hunt Encryptor Hash",
+              "arguments": {
+                "connector": "fortinet-fortiedr",
+                "operation": "hunt_hash",
+                "version": "2.0.0",
+                "params": {
+                  "sha256": "{{vars.input.records[0].fileHash}}",
+                  "days": 7
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "a0c8a846-e44a-52c0-b6e6-e4c3bea1f948",
+              "name": "Search SMB Lateral Movement",
+              "arguments": {
+                "connector": "splunk",
+                "operation": "run_search",
+                "version": "2.2.0",
+                "params": {
+                  "query": "index=network dest_port=445 src={{vars.input.records[0].sourceIp}} earliest=-24h | stats count by dest"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "5f00a9b2-6434-5783-92bc-76c2571e7039",
+              "name": "Merge Affected Hosts",
+              "arguments": {
+                "affected": "{{vars.steps.Hunt_Encryptor_Hash.data.devices + vars.steps.Search_SMB_Lateral_Movement.data.results}}"
+              },
+              "stepType": {
+                "name": "Set Variable"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "dd6cd699-1a72-5941-aa4c-f072b6966178",
+              "name": "Link Affected Assets",
+              "arguments": {
+                "assets": "{{vars.affected}}"
+              },
+              "stepType": {
+                "name": "Update Record"
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/c8c783f9-ce7c-5a65-a26c-8553579af661",
+              "targetStep": "/api/3/workflow_steps/aca939e9-ffcc-5580-b66e-e4c538f4b7aa"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/aca939e9-ffcc-5580-b66e-e4c538f4b7aa",
+              "targetStep": "/api/3/workflow_steps/a0c8a846-e44a-52c0-b6e6-e4c3bea1f948"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/a0c8a846-e44a-52c0-b6e6-e4c3bea1f948",
+              "targetStep": "/api/3/workflow_steps/5f00a9b2-6434-5783-92bc-76c2571e7039"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/5f00a9b2-6434-5783-92bc-76c2571e7039",
+              "targetStep": "/api/3/workflow_steps/dd6cd699-1a72-5941-aa4c-f072b6966178"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "70590519-2af8-5ea7-8538-d6c0704ac8bc",
+          "name": "Ransomware - Verify Backups",
+          "description": "Lists restore points for affected systems, flags immutable points created before the infection, and raises a change request for the restore.",
+          "isActive": true,
+          "recordTags": [
+            "Ransomware",
+            "Recovery"
+          ],
+          "triggerStep": "/api/3/workflow_steps/6d768801-b837-5271-b5d1-c0493c5ad428",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "6d768801-b837-5271-b5d1-c0493c5ad428",
+              "name": "Start",
+              "arguments": {
+                "route": "d026fae8-304f-4ece-ad3a-7eba5804f5f6",
+                "resources": [
+                  "incidents"
+                ],
+                "title": "Verify Backups",
+                "executeButtonText": "Verify Backups"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "098df2db-5003-54c1-87df-da17c8e9c425",
+              "name": "Get Restore Points",
+              "arguments": {
+                "connector": "veeam-backup",
+                "operation": "get_restore_points",
+                "version": "1.2.0",
+                "params": {
+                  "vm_name": "{{vars.input.records[0].assetName}}",
+                  "password": "V33am-Svc-Pass!"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "92433c70-231e-5ada-8909-3f6eade456bd",
+              "name": "Clean Restore Point Available?",
+              "arguments": {
+                "conditions": [
+                  {
+                    "option": "Available",
+                    "condition": "{{vars.steps.Get_Restore_Points.data | selectattr('immutable') | list | length > 0}}"
+                  }
+                ]
+              },
+              "stepType": {
+                "name": "Decision"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "f47d8457-e2e2-5250-831b-f6c69123d1a4",
+              "name": "Raise Restore Change Request",
+              "arguments": {
+                "connector": "servicenow",
+                "operation": "create_record",
+                "version": "2.4.0",
+                "params": {
+                  "table": "change_request"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "6c2abd58-13da-5078-ba24-0fc37878781f",
+              "name": "Notify Recovery Team",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/4cf2d919-9337-513b-b3a1-f77e28d3bb86",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/6d768801-b837-5271-b5d1-c0493c5ad428",
+              "targetStep": "/api/3/workflow_steps/098df2db-5003-54c1-87df-da17c8e9c425"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/098df2db-5003-54c1-87df-da17c8e9c425",
+              "targetStep": "/api/3/workflow_steps/92433c70-231e-5ada-8909-3f6eade456bd"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/92433c70-231e-5ada-8909-3f6eade456bd",
+              "targetStep": "/api/3/workflow_steps/f47d8457-e2e2-5250-831b-f6c69123d1a4",
+              "label": "Available"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/f47d8457-e2e2-5250-831b-f6c69123d1a4",
+              "targetStep": "/api/3/workflow_steps/6c2abd58-13da-5078-ba24-0fc37878781f"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "ba32a39d-ee8d-5482-b1c5-65b8363008ee",
+          "name": "Ransomware - Collect Ransom Note IOCs",
+          "description": "Records the ransom note hash and payment/leak-site domains as indicators and blocks the domains.",
+          "isActive": true,
+          "recordTags": [
+            "Ransomware",
+            "Threat Intel"
+          ],
+          "triggerStep": "/api/3/workflow_steps/afaa5693-34dc-53dd-b134-d32114a62895",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "afaa5693-34dc-53dd-b134-d32114a62895",
+              "name": "Start",
+              "arguments": {
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records}}"
+                  }
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "c3b41095-caf9-54e7-9cd7-88d029bad25e",
+              "name": "Check Note Hash",
+              "arguments": {
+                "connector": "virustotal",
+                "operation": "get_file_reputation",
+                "version": "2.5.0",
+                "params": {
+                  "hash": "{{vars.input.records[0].noteHash}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "79c65941-0343-5696-8aaa-c55d8d6a6296",
+              "name": "Create Note Indicators",
+              "arguments": {
+                "resource": "indicators"
+              },
+              "stepType": {
+                "name": "Create Record"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "27fafc30-b51a-5c5a-b211-9b3509519a12",
+              "name": "Block Leak-Site Domains",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/fd967b56-fd75-5825-8327-50a09166aa40",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/afaa5693-34dc-53dd-b134-d32114a62895",
+              "targetStep": "/api/3/workflow_steps/c3b41095-caf9-54e7-9cd7-88d029bad25e"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/c3b41095-caf9-54e7-9cd7-88d029bad25e",
+              "targetStep": "/api/3/workflow_steps/79c65941-0343-5696-8aaa-c55d8d6a6296"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/79c65941-0343-5696-8aaa-c55d8d6a6296",
+              "targetStep": "/api/3/workflow_steps/27fafc30-b51a-5c5a-b211-9b3509519a12"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,261 @@
+{
+  "type": "workflow_collections",
+  "data": [
+    {
+      "@type": "WorkflowCollection",
+      "name": "SOC - Utilities",
+      "description": "Shared helper playbooks",
+      "workflows": [
+        {
+          "@type": "Workflow",
+          "uuid": "60f0b79e-65c1-5934-ab18-7b3c7218bdb5",
+          "name": "Create ServiceNow Incident",
+          "description": "Opens a ServiceNow incident linked to the FortiSOAR alert and stores the ticket number.",
+          "isActive": true,
+          "recordTags": [
+            "Ticketing",
+            "Subroutine"
+          ],
+          "triggerStep": "/api/3/workflow_steps/8821ec9a-2e7a-5116-9111-51ba9de487af",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "8821ec9a-2e7a-5116-9111-51ba9de487af",
+              "name": "Start",
+              "arguments": {
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records}}"
+                  }
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "386945ce-8e41-5659-842e-1923356ffc07",
+              "name": "Create Incident",
+              "arguments": {
+                "connector": "servicenow",
+                "operation": "create_record",
+                "version": "2.4.0",
+                "params": {
+                  "table": "incident",
+                  "short_description": "{{vars.input.records[0].name}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "c5246e2a-3e81-5cfb-959a-26c87c17facf",
+              "name": "Store Ticket Number",
+              "arguments": {
+                "ticket": "{{vars.steps.Create_Incident.data.number}}"
+              },
+              "stepType": {
+                "name": "Update Record"
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/8821ec9a-2e7a-5116-9111-51ba9de487af",
+              "targetStep": "/api/3/workflow_steps/386945ce-8e41-5659-842e-1923356ffc07"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/386945ce-8e41-5659-842e-1923356ffc07",
+              "targetStep": "/api/3/workflow_steps/c5246e2a-3e81-5cfb-959a-26c87c17facf"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "4cf2d919-9337-513b-b3a1-f77e28d3bb86",
+          "name": "Notify SOC On-Call",
+          "description": "Emails and opens a Jira ticket for the SOC on-call engineer.",
+          "isActive": true,
+          "recordTags": [
+            "Notification",
+            "Subroutine"
+          ],
+          "triggerStep": "/api/3/workflow_steps/b2d42307-2637-57a1-8063-e5f4104789f6",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "b2d42307-2637-57a1-8063-e5f4104789f6",
+              "name": "Start",
+              "arguments": {
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records}}"
+                  }
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "8c006013-d636-5048-bec5-aa0468376d98",
+              "name": "Email On-Call",
+              "arguments": {
+                "connector": "smtp",
+                "operation": "send_email",
+                "version": "2.0.0",
+                "params": {
+                  "to": "soc-oncall@acme-tenant.example"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "5bfd49ce-02b5-519c-950c-dd24d63999f4",
+              "name": "Create Jira Issue",
+              "arguments": {
+                "connector": "jira",
+                "operation": "create_issue",
+                "version": "3.1.0",
+                "params": {
+                  "project": "SOC",
+                  "issue_type": "Task"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/b2d42307-2637-57a1-8063-e5f4104789f6",
+              "targetStep": "/api/3/workflow_steps/8c006013-d636-5048-bec5-aa0468376d98"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/8c006013-d636-5048-bec5-aa0468376d98",
+              "targetStep": "/api/3/workflow_steps/5bfd49ce-02b5-519c-950c-dd24d63999f4"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "23c99bb5-3d48-5dfb-a03b-cb278ec648a7",
+          "name": "Escalate Critical Incident",
+          "description": "When an incident becomes Critical, opens a ServiceNow P1 and pages the on-call engineer.",
+          "isActive": true,
+          "recordTags": [
+            "Escalation"
+          ],
+          "triggerStep": "/api/3/workflow_steps/33c6d8e9-5bf9-50cd-a3c2-ef44aabc1cc7",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "33c6d8e9-5bf9-50cd-a3c2-ef44aabc1cc7",
+              "name": "Start",
+              "arguments": {
+                "resource": "incidents",
+                "resources": [
+                  "incidents"
+                ],
+                "fieldbasedtrigger": {
+                  "filters": [
+                    {
+                      "field": "severity",
+                      "value": "Critical"
+                    }
+                  ]
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "b43d97c5-3e05-52bf-aa6f-bbcaef687344",
+              "name": "Open P1 Ticket",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/60f0b79e-65c1-5934-ab18-7b3c7218bdb5",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "95f454af-2e6e-5e03-8a1d-8abc545fc1d2",
+              "name": "Page On-Call",
+              "arguments": {
+                "workflowReference": "/api/3/workflows/4cf2d919-9337-513b-b3a1-f77e28d3bb86",
+                "arguments": {
+                  "records": "{{vars.input.records}}"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/33c6d8e9-5bf9-50cd-a3c2-ef44aabc1cc7",
+              "targetStep": "/api/3/workflow_steps/b43d97c5-3e05-52bf-aa6f-bbcaef687344"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/b43d97c5-3e05-52bf-aa6f-bbcaef687344",
+              "targetStep": "/api/3/workflow_steps/95f454af-2e6e-5e03-8a1d-8abc545fc1d2"
+            }
+          ]
+        },
+        {
+          "@type": "Workflow",
+          "uuid": "445c3e68-d378-584f-b914-999277dd6632",
+          "name": "Daily SLA Breach Report",
+          "description": "Finds alerts that breached SLA in the last 24h and emails a summary to SOC management.",
+          "isActive": true,
+          "recordTags": [
+            "Reporting",
+            "SLA"
+          ],
+          "triggerStep": "/api/3/workflow_steps/df8e0612-28a1-54bd-894e-b78d7d93108a",
+          "steps": [
+            {
+              "@type": "WorkflowStep",
+              "uuid": "df8e0612-28a1-54bd-894e-b78d7d93108a",
+              "name": "Start",
+              "arguments": {
+                "step_variables": {
+                  "input": {
+                    "records": "{{vars.input.records}}"
+                  }
+                }
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "aadf6bb8-1a01-5646-b852-e32b5e5540a9",
+              "name": "Find Breached Alerts",
+              "arguments": {
+                "resource": "alerts",
+                "query": "slaStatus eq 'Breached'"
+              },
+              "stepType": {
+                "name": "Find Records"
+              }
+            },
+            {
+              "@type": "WorkflowStep",
+              "uuid": "2a220ce8-cefb-51cb-9242-826916b658f3",
+              "name": "Email Report",
+              "arguments": {
+                "connector": "smtp",
+                "operation": "send_email",
+                "version": "2.0.0",
+                "params": {
+                  "to": "soc-managers@acme-tenant.example"
+                }
+              }
+            }
+          ],
+          "routes": [
+            {
+              "sourceStep": "/api/3/workflow_steps/df8e0612-28a1-54bd-894e-b78d7d93108a",
+              "targetStep": "/api/3/workflow_steps/aadf6bb8-1a01-5646-b852-e32b5e5540a9"
+            },
+            {
+              "sourceStep": "/api/3/workflow_steps/aadf6bb8-1a01-5646-b852-e32b5e5540a9",
+              "targetStep": "/api/3/workflow_steps/2a220ce8-cefb-51cb-9242-826916b658f3"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

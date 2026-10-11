@@ -1,0 +1,42 @@
+# Profiles follow APP_MODE. Put COMPOSE_PROFILES=<mode> in .env, then just `docker compose up -d`.
+#   local       -> neo4j + app            (LLM/embeddings hosted, e.g. Gemini)
+#   full-local  -> neo4j + ollama + app   (nothing leaves the machine)
+#   cloud       -> app only               (NEO4J pointed at Aura / remote Neo4j via DOCKER_NEO4J_URI)
+services:
+  neo4j:
+    image: neo4j:5.26-community
+    profiles: ["local", "full-local"]
+    ports: ["7474:7474", "7687:7687"]
+    environment:
+      NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env}
+      NEO4J_server_memory_heap_max__size: 1G
+    volumes: [neo4j_data:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 >/dev/null || exit 1"]
+      interval: 10s
+      retries: 12
+
+  ollama:
+    image: ollama/ollama:0.6.8
+    profiles: ["full-local"]
+    ports: ["11434:11434"]
+    volumes: [ollama_data:/root/.ollama]
+
+  app:
+    build: .
+    profiles: ["local", "full-local", "cloud"]
+    env_file: .env
+    environment:
+      # Inside the compose network the hostnames differ from the host-side .env values.
+      NEO4J_URI: ${DOCKER_NEO4J_URI:-bolt://neo4j:7687}
+      OLLAMA_URL: ${DOCKER_OLLAMA_URL:-http://ollama:11434}
+    ports: ["8000:8000"]
+    volumes: ["./data:/app/data:ro"]
+    depends_on:
+      neo4j:
+        condition: service_healthy
+        required: false
+
+volumes:
+  neo4j_data:
+  ollama_data:
