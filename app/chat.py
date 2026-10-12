@@ -6,11 +6,13 @@ retrieval works on "and which of those need approval?" just like on a fresh ques
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 import uuid
 from typing import Iterator
 
+log = logging.getLogger("graphrag.chat")
 HISTORY_TURNS = 6  # messages of history sent to the LLM
 
 CONDENSE_SYSTEM = (
@@ -128,15 +130,51 @@ def _answer_playbooks(svc, answer: str, cited_sources: list[dict]) -> list[dict]
     return result[:8]
 
 
-def chat_events(svc, session_id: str, question: str) -> Iterator[dict]:
+def graph_only_answer(hits: dict, sources: list[dict]) -> str:
+    """Deterministic summary of what the graph found (no LLM)."""
+    terms = ", ".join(f"`{t}`" for t in hits.get("terms", []))
+    filters = hits.get("filters") or {}
+    filt = (" · filters: " + ", ".join(f"{k} = **{v}**" for k, v in filters.items())) if filters else ""
+    if not sources:
+        return (f"**Graph-only mode (no AI).** Nothing matched {terms or 'your question'}{filt}. Try the exact words used in "
+                "playbook, step, connector or module names (e.g. *phishing*, *virustotal*, *block IP*), or add synonyms.")
+    lines = [f"**Graph-only mode (no AI).** Keyword matches for {terms or 'the filters'}{filt}, expanded through the graph. "
+             "Playbooks matching more of your terms come first. No answer is written; open a playbook or source for details.", ""]
+    syn = [g for g in hits.get("groups", []) if len(g) > 1]
+    if syn:
+        lines.append("Synonyms used: " + "; ".join(f"{g[0]} → {', '.join(g[1:4])}{'…' if len(g) > 4 else ''}" for g in syn) + ".")
+        lines.append("")
+    pbs = hits["playbooks"]
+    if pbs:
+        lines.append(f"### Playbooks ({len(pbs)})")
+        for pb in pbs:
+            why = pb.get("why") or [f"linked: {w}" for w in pb.get("linked_because", [])]
+            matched = f" · {pb['matched']}/{pb['of']} terms" if pb.get("of") else ""
+            lines.append(f"- **{pb['name']}**{matched}" + (f" — matched {'; '.join(why)}" if why else ""))
+        lines.append("")
+    for key, title in (("vendor", "Vendor / pack docs"), ("internal", "Internal docs")):
+        if hits[key]:
+            lines.append(f"### {title} ({len(hits[key])})")
+            for c in hits[key]:
+                snippet = re.sub(r"\s+", " ", c["text"])[:220]
+                lines.append(f"- **{c['title']}**: {snippet}…")
+            lines.append("")
+    if hits.get("linked"):
+        lines.append(f"Linked from the docs above: {', '.join(hits['linked'])}.")
+    return "\n".join(lines).strip()
+
+
+def chat_events(svc, session_id: str, question: str, mode: str = "ai", filters: dict | None = None) -> Iterator[dict]:
     """Run one chat turn, yielding progress events for the UI:
-       stage (rewrite/search/graph/answer) -> token* -> done (or error)."""
+       stage (rewrite/search/graph/answer) -> token* -> done (or error).
+       mode "graph" makes no model API calls: keyword search + graph expansion, no written answer."""
+    graph_only = mode == "graph"
     store = svc.chats
     session = store.get(session_id)
     if session is None:
         yield {"type": "error", "message": "chat session not found"}
         return
-    history = store.history(session_id)
+    history = store.history(session_id, svc.settings.chat_history_turns) if svc.settings.chat_history_turns else []
     store.add(session_id, "user", question)
     if not session["messages"] and session["title"] == "New chat":
         store.rename(session_id, question)
@@ -145,17 +183,18 @@ def chat_events(svc, session_id: str, question: str) -> Iterator[dict]:
         # 1. Understand: rewrite follow-ups into a standalone question.
         yield {"type": "stage", "stage": "rewrite", "status": "running"}
         standalone = question
-        if history:
+        if history and not graph_only:
             prompt = f"CONVERSATION:\n{_format_history(history)}\n\nLATEST MESSAGE: {question}"
             standalone = svc.llm.complete(CONDENSE_SYSTEM, prompt).strip().strip('"') or question
         yield {"type": "stage", "stage": "rewrite", "status": "done",
-               "detail": standalone if standalone != question else "standalone question", "standalone": standalone}
+               "detail": "skipped (graph-only)" if graph_only and history else
+                         standalone if standalone != question else "standalone question", "standalone": standalone}
 
         # 2. Search: hybrid vector + keyword entry points.
         yield {"type": "stage", "stage": "search", "status": "running"}
-        hits = svc.retriever.search_all(standalone)
+        hits = svc.retriever.search_keyword(standalone, filters) if graph_only else svc.retriever.search_all(standalone)
         yield {"type": "stage", "stage": "search", "status": "done",
-               "detail": f"{len(hits['playbooks'])} playbooks, {len(hits['vendor'])} vendor, "
+               "detail": ("keywords only · " if graph_only else "") + f"{len(hits['playbooks'])} playbooks, {len(hits['vendor'])} vendor, "
                          f"{len(hits['internal'])} internal",
                "playbooks": [p["name"] for p in hits["playbooks"]]}
 
@@ -167,7 +206,12 @@ def chat_events(svc, session_id: str, question: str) -> Iterator[dict]:
                "detail": f"+{len(hits['linked'])} linked playbooks" if hits["linked"] else "steps, callers, docs loaded",
                "linked": hits["linked"]}
 
-        if not sources:
+        if graph_only:
+            answer = graph_only_answer(hits, sources)
+            yield {"type": "token", "text": answer}
+            yield {"type": "stage", "stage": "answer", "status": "done", "detail": "skipped (graph-only, no AI)"}
+            cited_sources = sources
+        elif not sources:
             answer = "Nothing relevant is indexed yet. Ingest playbooks and docs first."
             yield {"type": "token", "text": answer}
             cited_sources = []
@@ -189,7 +233,8 @@ def chat_events(svc, session_id: str, question: str) -> Iterator[dict]:
             yield {"type": "stage", "stage": "answer", "status": "done",
                    "detail": f"{len(cited)} sources cited"}
 
-        playbooks = _answer_playbooks(svc, answer, cited_sources)
+        playbooks = ([{"uuid": s["uuid"], "name": s["name"]} for s in sources if s["type"] == "playbook"][:8]
+                     if graph_only else _answer_playbooks(svc, answer, cited_sources))
         message_id = store.add(session_id, "assistant", answer, standalone=standalone,
                                sources=cited_sources, playbooks=playbooks)
         uuids = [p["uuid"] for p in playbooks]
@@ -197,6 +242,7 @@ def chat_events(svc, session_id: str, question: str) -> Iterator[dict]:
         yield {"type": "done", "message_id": message_id, "sources": cited_sources,
                "playbooks": playbooks, "standalone": standalone, "graph": graph}
     except Exception as exc:  # surface provider/DB errors in the chat instead of a dropped stream
+        log.exception("chat turn failed in session %s", session_id)
         message = friendly_error(exc)
         store.add(session_id, "assistant", f"Error: {message}")
         yield {"type": "error", "message": message}

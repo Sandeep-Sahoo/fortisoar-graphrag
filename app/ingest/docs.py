@@ -71,7 +71,8 @@ def _name_pattern(name: str) -> re.Pattern:
 UPSERT_DOCS = """
 UNWIND $docs AS doc
 MERGE (d:Document {id: doc.id})
-SET d.title = doc.title, d.path = doc.path, d.source = doc.source, d.version = doc.version
+SET d.title = doc.title, d.path = doc.path, d.source = doc.source, d.version = doc.version,
+    d.ingested_at = toString(datetime())
 SET d += doc.props
 WITH d
 OPTIONAL MATCH (d)-[:HAS_CHUNK]->(old:Chunk)
@@ -82,7 +83,8 @@ CREATE_CHUNKS = """
 UNWIND $chunks AS c
 MATCH (d:Document {id: c.doc_id})
 CREATE (ch:Chunk {id: c.id, text: c.text, idx: c.idx, source: c.source, version: c.version,
-                  doc_id: c.doc_id, doc_title: c.title, embedding: c.embedding})
+                  doc_id: c.doc_id, doc_title: c.title, priority: c.priority})
+SET ch.embedding = c.embedding
 CREATE (d)-[:HAS_CHUNK]->(ch)
 WITH ch, c
 UNWIND c.connectors AS con_name
@@ -100,39 +102,87 @@ MERGE (ch)-[:EXPLAINS]->(k)
 DOC_BATCH = 40  # documents per write; their chunks are embedded together
 
 
-def write_documents(docs: list[dict], graph, embedder, progress=print) -> dict:
+def write_documents(docs: list[dict], graph, embedder, progress=print, priority=None) -> dict:
     """docs: [{id, title, text, source, version?, path?, props?: {...}}] -> Document + Chunk nodes.
 
+    All chunks are stored (and keyword-searchable). Embeddings are requested in `priority` order
+    (priority(doc, chunk_index) -> float, higher first), so when the embedder has a budget the most
+    useful chunks get vectors and the rest stay pending for `embed-pending`.
     Chunks are linked to the Connectors (by name) and Concepts they mention.
     """
     connectors = [r["name"] for r in graph.read("MATCH (c:Connector) RETURN c.name AS name") if len(r["name"]) >= 4]
     connector_patterns = [(n, _name_pattern(n)) for n in connectors]
     concept_patterns = [(n, _name_pattern(n)) for n in CONCEPTS]
-    totals = {"documents": 0, "chunks": 0}
     docs = [d for d in docs if (d.get("text") or "").strip()]
+    rows, concept_links = [], []
+    for doc in docs:
+        for i, chunk in enumerate(chunk_text(doc["text"])):
+            chunk_id = f"{doc['id']}#{i}"
+            rows.append({"id": chunk_id, "idx": i, "text": chunk, "doc_id": doc["id"], "title": doc["title"],
+                         "source": doc["source"], "version": doc.get("version"),
+                         "priority": float(priority(doc, i)) if priority else 0.0,
+                         "connectors": [n for n, pat in connector_patterns if pat.search(chunk)]})
+            concept_links += [{"chunk": chunk_id, "concept": n} for n, pat in concept_patterns if pat.search(chunk)]
+
+    order = sorted(range(len(rows)), key=lambda i: -rows[i]["priority"]) if priority else list(range(len(rows)))
+    for start in range(0, len(order), 100):
+        batch = order[start : start + 100]
+        vectors = embedder.embed([f"{rows[i]['title']}\n\n{rows[i]['text']}" for i in batch])
+        for i, vector in zip(batch, vectors):
+            rows[i]["embedding"] = vector
+        if len(order) > 100:
+            progress(f"  chunks embedded/queued {min(start + 100, len(order))}/{len(order)}")
+
+    by_doc: dict[str, list[dict]] = {}
+    for row in rows:
+        by_doc.setdefault(row["doc_id"], []).append(row)
     for start in range(0, len(docs), DOC_BATCH):
         batch = docs[start : start + DOC_BATCH]
-        rows, concept_links, inputs = [], [], []
-        for doc in batch:
-            for i, chunk in enumerate(chunk_text(doc["text"])):
-                chunk_id = f"{doc['id']}#{i}"
-                rows.append({"id": chunk_id, "idx": i, "text": chunk, "doc_id": doc["id"], "title": doc["title"],
-                             "source": doc["source"], "version": doc.get("version"),
-                             "connectors": [n for n, pat in connector_patterns if pat.search(chunk)]})
-                inputs.append(f"{doc['title']}\n\n{chunk}")
-                concept_links += [{"chunk": chunk_id, "concept": n} for n, pat in concept_patterns if pat.search(chunk)]
-        for row, vector in zip(rows, embedder.embed(inputs)):
-            row["embedding"] = vector
         graph.run(UPSERT_DOCS, docs=[{"id": d["id"], "title": d["title"], "path": d.get("path"), "source": d["source"],
                                       "version": d.get("version"), "props": d.get("props") or {}} for d in batch])
-        graph.run(CREATE_CHUNKS, chunks=rows)
-        if concept_links:
-            graph.run(LINK_CONCEPTS, links=concept_links)
-        totals["documents"] += len(batch)
-        totals["chunks"] += len(rows)
-        if len(docs) > DOC_BATCH:
-            progress(f"  documents {min(start + DOC_BATCH, len(docs))}/{len(docs)}")
-    return totals
+        graph.run(CREATE_CHUNKS, chunks=[r for d in batch for r in by_doc.get(d["id"], [])])
+    for start in range(0, len(concept_links), 2000):
+        graph.run(LINK_CONCEPTS, links=concept_links[start : start + 2000])
+    embedded = sum(1 for r in rows if r.get("embedding") is not None)
+    return {"documents": len(docs), "chunks": len(rows), "embedded": embedded, "pending": len(rows) - embedded}
+
+
+def embed_pending(graph, embedder, limit: int, what: str = "all", repos: list[str] | None = None) -> dict:
+    """Give vectors to stored playbooks / chunks that don't have one yet (highest priority first),
+    optionally only those loaded from the given GitHub repos."""
+    from .playbooks import EMBED_CHARS
+
+    done = {"playbooks": 0, "chunks": 0}
+    remaining = limit
+    if what in ("all", "playbooks") and remaining > 0:
+        rows = graph.read(
+            "MATCH (p:Playbook) WHERE p.embedding IS NULL AND NOT coalesce(p.placeholder, false) AND p.summary IS NOT NULL "
+            "AND ($repos IS NULL OR p.repo IN $repos) "
+            "RETURN p.uuid AS uuid, p.summary AS text "
+            "ORDER BY CASE p.pack_type WHEN 'solution_pack' THEN 0 WHEN 'ai' THEN 1 ELSE 2 END, p.name LIMIT $limit",
+            limit=remaining, repos=repos)
+        for start in range(0, len(rows), 100):
+            batch = rows[start : start + 100]
+            vectors = embedder.embed([r["text"][:EMBED_CHARS] for r in batch])
+            pairs = [{"uuid": r["uuid"], "embedding": v} for r, v in zip(batch, vectors) if v is not None]
+            graph.run("UNWIND $rows AS r MATCH (p:Playbook {uuid: r.uuid}) SET p.embedding = r.embedding", rows=pairs)
+            done["playbooks"] += len(pairs)
+        remaining -= done["playbooks"]
+    if what in ("all", "chunks") and remaining > 0:
+        rows = graph.read(
+            "MATCH (d:Document)-[:HAS_CHUNK]->(c:Chunk) WHERE c.embedding IS NULL AND ($repos IS NULL OR d.repo IN $repos) "
+            "RETURN c.id AS id, c.doc_title AS title, c.text AS text ORDER BY coalesce(c.priority, 0) DESC, c.idx LIMIT $limit",
+            limit=remaining, repos=repos)
+        for start in range(0, len(rows), 100):
+            batch = rows[start : start + 100]
+            vectors = embedder.embed([f"{r['title']}\n\n{r['text']}" for r in batch])
+            pairs = [{"id": r["id"], "embedding": v} for r, v in zip(batch, vectors) if v is not None]
+            graph.run("UNWIND $rows AS r MATCH (c:Chunk {id: r.id}) SET c.embedding = r.embedding", rows=pairs)
+            done["chunks"] += len(pairs)
+    left = graph.read(
+        "CALL { MATCH (p:Playbook) WHERE p.embedding IS NULL AND NOT coalesce(p.placeholder, false) RETURN count(p) AS pb } "
+        "CALL { MATCH (c:Chunk) WHERE c.embedding IS NULL RETURN count(c) AS ch } RETURN pb, ch")[0]
+    return {"embedded": done, "still_pending": {"playbooks": left["pb"], "chunks": left["ch"]}}
 
 
 def ingest_docs(path: Path, source: str, version: str, graph, embedder, scrubber: Scrubber) -> dict:
@@ -147,7 +197,8 @@ def ingest_docs(path: Path, source: str, version: str, graph, embedder, scrubber
         rel = str(file.relative_to(root))
         docs.append({"id": f"{source}:{rel}", "title": title_of(text, file), "text": text, "source": source,
                      "version": version, "path": rel})
-    return write_documents(docs, graph, embedder)
+    result = write_documents(docs, graph, embedder)
+    return {"documents": result["documents"], "chunks": result["chunks"]}
 
 
 # ------------------------------------------------------------------ doc -> playbook linking

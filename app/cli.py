@@ -12,6 +12,18 @@ def _print(obj) -> None:
     print(json.dumps(obj, indent=2, default=str))
 
 
+def _set_budget(svc, limit: int) -> None:
+    if not hasattr(svc.embedder, "budget"):
+        raise ValueError("embedding budgets need the embedding cache (EMBED_CACHE)")
+    svc.embedder.budget = max(0, limit)
+
+
+def _report_budget(svc) -> None:
+    emb = svc.embedder
+    if getattr(emb, "budget", None) is not None:
+        print(f"embedding budget: {emb.budget} left, {emb.skipped} item(s) stored without a vector (pending)")
+
+
 def _derive(svc) -> None:
     from .ingest.linking import derive_links
 
@@ -48,6 +60,21 @@ def main() -> None:
     p.add_argument("--wipe", action="store_true", help="delete everything in the graph first (including chats)")
     p.add_argument("--yes", action="store_true", help="confirm --wipe")
     p.add_argument("--skip-docs", action="store_true", help="playbooks and catalog only")
+    p.add_argument("--repos", help="comma-separated repo names to load (others are kept; no pruning)")
+    p.add_argument("--max-embeddings", type=int, help="cap NEW embeddings for this run; the rest is stored as pending")
+    p.add_argument("--mode", choices=["ingest", "reingest", "sync"], default="ingest", help="label recorded in the ingest history")
+
+    p = sub.add_parser("ingest-guide", help="load a product guide PDF, one document per bookmarked section")
+    p.add_argument("path", type=Path)
+    p.add_argument("--guide", default="Playbooks Guide")
+    p.add_argument("--version", default="7.6.5")
+    p.add_argument("--max-embeddings", type=int, help="cap NEW embeddings; most useful sections first")
+    p.add_argument("--dry-run", action="store_true", help="show the sections and what would be embedded, write nothing")
+
+    p = sub.add_parser("embed-pending", help="embed stored playbooks / chunks that have no vector yet")
+    p.add_argument("--limit", type=int, required=True)
+    p.add_argument("--what", choices=["all", "playbooks", "chunks"], default="all")
+    p.add_argument("--repos", help="only items loaded from these comma-separated GitHub repos (records a 'continue' run)")
 
     p = sub.add_parser("links", help="review doc -> playbook links")
     p.add_argument("action", choices=["list", "approve", "reject", "add"],
@@ -58,6 +85,11 @@ def main() -> None:
     p.add_argument("--all", action="store_true", help="approve/reject every proposed link matching the filters")
     p.add_argument("--method", choices=["llm", "embedding"], help="with --all: only links from this method")
     p.add_argument("--min-confidence", type=float, default=0.0, help="with --all: only links at or above this")
+
+    sub.add_parser("review-github", help="score every downloaded Fortinet playbook against the best practices (no model calls)")
+    sub.add_parser("sync-sources", help="re-pull connected Git sources and re-review uploads (no model calls)")
+    p = sub.add_parser("scheduled-sync", help="fetch changed GitHub repos, optionally re-ingest them (0 new embeddings), sync sources")
+    p.add_argument("--force", action="store_true", help="run even if the schedule is off / not due")
 
     p = sub.add_parser("ask")
     p.add_argument("question")
@@ -107,6 +139,8 @@ def main() -> None:
         from .ingest.fortinet import link_repo_docs, load_all, write_catalog
         from .ingest.playbooks import write_playbooks
 
+        if args.max_embeddings is not None:
+            _set_budget(svc, args.max_embeddings)
         if args.wipe:
             if not args.yes:
                 parser.error("--wipe deletes all graph data including chats; add --yes to confirm")
@@ -114,16 +148,63 @@ def main() -> None:
             print("graph wiped")
         svc.graph.ensure_schema()
         t0 = time.time()
-        packs, playbooks, docs = load_all(args.path, svc.scrubber)
+        only = {r.strip() for r in args.repos.split(",") if r.strip()} if args.repos else None
+        packs, playbooks, docs = load_all(args.path, svc.scrubber, only=only)
         print(f"loaded {len(packs)} repos: {len(playbooks)} playbooks, {len(docs)} documents ({time.time() - t0:.0f}s)", flush=True)
-        _print({"playbooks": write_playbooks(playbooks, svc.graph, svc.embedder, prune=True,
+        from .ingest import state as ingest_state
+
+        before = ingest_state.playbook_signatures_from_graph(svc.graph, sorted(only) if only else None)
+        per_repo = ingest_state.diff(before, ingest_state.playbook_signatures_from_parse(playbooks))
+        _print({"playbooks": write_playbooks(playbooks, svc.graph, svc.embedder, prune=only is None,
                                              progress=lambda m: print(m, flush=True))})
         _print({"catalog": write_catalog(packs, svc.graph)})
         if not args.skip_docs:
             _print({"documents": write_documents(docs, svc.graph, svc.embedder, progress=lambda m: print(m, flush=True))})
             print("linked docs:", link_repo_docs(docs, svc.graph))
         _derive(svc)
+        _report_budget(svc)
+        from .ingest.state import record
+
+        record(sorted(only) if only else [p.repo for p in packs], args.mode, args.max_embeddings,
+               {"embedded_skipped": getattr(svc.embedder, "skipped", 0)}, per_repo)
+        changed = {r: d["diff"]["counts"] for r, d in per_repo.items() if not d["diff"]["first_load"] and any(d["diff"]["counts"].values())}
+        if changed:
+            print("playbook changes since the last ingest:", json.dumps(changed))
         print(f"done in {time.time() - t0:.0f}s")
+    elif args.cmd == "ingest-guide":
+        from .ingest.docs import write_documents
+        from .ingest.guide import guide_priority, split_guide
+
+        docs = split_guide(args.path, args.guide, args.version)
+        chunks = [(d, i) for d in docs for i, _ in enumerate(__import__("app.ingest.docs", fromlist=["chunk_text"]).chunk_text(d["text"]))]
+        ranked = sorted(chunks, key=lambda x: -guide_priority(*x))
+        budget = args.max_embeddings if args.max_embeddings is not None else len(ranked)
+        print(f"{len(docs)} sections, {len(chunks)} chunks; embedding budget {budget}")
+        covered = {}
+        for d, _ in ranked[:budget]:
+            covered[d["props"]["section"]] = covered.get(d["props"]["section"], 0) + 1
+        for section, n in sorted(covered.items(), key=lambda x: -x[1]):
+            print(f"  {n:3} embedded  {section}")
+        if args.dry_run:
+            print("dry run: nothing written")
+            return
+        svc.graph.ensure_schema()
+        _set_budget(svc, budget)
+        _print(write_documents(docs, svc.graph, svc.embedder, progress=lambda m: print(m, flush=True), priority=guide_priority))
+        _derive(svc)
+        _report_budget(svc)
+    elif args.cmd == "embed-pending":
+        from .ingest.docs import embed_pending
+
+        _set_budget(svc, args.limit)
+        repos = [r.strip() for r in args.repos.split(",") if r.strip()] if args.repos else None
+        result = embed_pending(svc.graph, svc.embedder, args.limit, args.what, repos)
+        _print(result)
+        _report_budget(svc)
+        if repos:
+            from .ingest.state import record
+
+            record(repos, "continue", args.limit, {"embedded": result["embedded"]})
     elif args.cmd == "links":
         if args.action == "list":
             _print(svc.graph.read(
@@ -165,6 +246,24 @@ def main() -> None:
                 )
             print(f"{status} {rows[0]['n']} link(s)")
             _derive(svc)
+    elif args.cmd == "review-github":
+        from .review.github_index import review_all
+
+        _print(review_all(svc.scrubber, progress=lambda m: print(m, flush=True)))
+    elif args.cmd == "sync-sources":
+        from .review import sources
+
+        for src in sources.sources():
+            try:
+                result = sources.sync(src["id"], svc)["summary"]
+                print(f"{src['name']}: {result['playbooks']} playbooks, avg score {result['avg_score']}"
+                      + (" (unchanged)" if result.get("unchanged") else ""), flush=True)
+            except Exception as exc:
+                print(f"  ! {src['name']}: {exc}", flush=True)
+    elif args.cmd == "scheduled-sync":
+        from .scheduler import run_sync
+
+        _print(run_sync(svc, force=args.force, progress=lambda m: print(m, flush=True)))
     elif args.cmd == "ask":
         result = svc.ask(args.question)
         print(result["answer"])
@@ -174,7 +273,8 @@ def main() -> None:
     elif args.cmd == "serve":
         import uvicorn
 
-        uvicorn.run("app.api:app", host=args.host, port=args.port)
+        # the app logs every request itself (with request ids), so uvicorn's access log would duplicate it
+        uvicorn.run("app.api:app", host=args.host, port=args.port, access_log=False)
     elif args.cmd == "wipe":
         if not args.yes:
             parser.error("refusing to wipe without --yes")
@@ -183,7 +283,20 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    import logging
+
+    from .logging_setup import setup_logging
+
+    setup_logging()
+    cli_log = logging.getLogger("graphrag.cli")
     try:
         main()
     except (ValueError, RuntimeError) as exc:  # config / schema problems: show the message, not a traceback
+        cli_log.error("command failed: %s", exc)
         raise SystemExit(f"error: {exc}")
+    except KeyboardInterrupt:
+        cli_log.warning("interrupted")
+        raise SystemExit(130)
+    except Exception:
+        cli_log.exception("unexpected error")
+        raise SystemExit("error: unexpected failure; details are in data/logs/app.log")

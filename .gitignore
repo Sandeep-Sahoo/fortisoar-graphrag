@@ -7,3 +7,5 @@ data/internal_docs/*
 !data/playbooks/sample_collection.json
 data/fortinet/
 data/.cache/
+data/jobs/
+data/logs/

@@ -58,6 +58,7 @@ class Playbook:
     calls: list[dict] = field(default_factory=list)
     pack: str = ""        # solution pack / connector label the playbook ships in (empty for own exports)
     pack_type: str = ""   # solution_pack | connector | ai | widget
+    pack_repo: str = ""   # GitHub repo the playbook was loaded from
 
     def summary(self, names: dict[str, str]) -> str:
         """Text used for the playbook embedding / fulltext entry point."""
@@ -265,9 +266,12 @@ BATCH = 200
 UPSERT_PLAYBOOKS = """
 UNWIND $pbs AS pb
 MERGE (p:Playbook {uuid: pb.uuid})
+// a re-ingest under an embedding cap must not drop the vector of an unchanged playbook
+SET p.embedding = CASE WHEN pb.embedding IS NOT NULL THEN pb.embedding
+                       WHEN p.summary = pb.summary THEN p.embedding END
 SET p.name = pb.name, p.description = pb.description, p.collection = pb.collection, p.tags = pb.tags,
-    p.active = pb.active, p.trigger_type = pb.trigger_type, p.summary = pb.summary, p.embedding = pb.embedding,
-    p.pack = pb.pack, p.pack_type = pb.pack_type, p.placeholder = false, p.synced_at = $synced_at
+    p.active = pb.active, p.trigger_type = pb.trigger_type, p.summary = pb.summary,
+    p.pack = pb.pack, p.pack_type = pb.pack_type, p.repo = pb.repo, p.placeholder = false, p.synced_at = $synced_at
 WITH p, pb
 OPTIONAL MATCH (:PlaybookCollection)-[old_c:CONTAINS]->(p)
 DELETE old_c
@@ -346,7 +350,7 @@ def write_playbooks(playbooks: list[Playbook], graph, embedder, prune: bool = Fa
         graph.run(UPSERT_PLAYBOOKS, synced_at=synced_at, pbs=[
             {"uuid": pb.uuid, "name": pb.name, "description": pb.description, "collection": pb.collection,
              "tags": pb.tags, "active": pb.active, "trigger_type": pb.trigger_type, "summary": summary,
-             "embedding": vector, "pack": pb.pack, "pack_type": pb.pack_type}
+             "embedding": vector, "pack": pb.pack, "pack_type": pb.pack_type, "repo": pb.pack_repo or None}
             for pb, summary, vector in zip(batch, texts, vectors)])
         graph.run(CREATE_STEPS, steps=[{**s.__dict__, "pb": pb.uuid} for pb in batch for s in pb.steps])
         graph.run(CREATE_ROUTES, routes=[r for pb in batch for r in pb.routes])
@@ -359,7 +363,8 @@ def write_playbooks(playbooks: list[Playbook], graph, embedder, prune: bool = Fa
     result = {"playbooks": len(playbooks), "steps": sum(len(p.steps) for p in playbooks)}
     if prune:
         # Anything not seen in this sync is no longer deployed.
-        stale = "MATCH (p:Playbook) WHERE NOT coalesce(p.placeholder, false) AND p.synced_at < $synced_at "
+        stale = ("MATCH (p:Playbook) WHERE NOT coalesce(p.placeholder, false) AND p.synced_at < $synced_at "
+                 "AND coalesce(p.pack_type, '') <> 'upload' ")  # your uploads are managed on the Review page
         result["pruned"] = graph.run(stale + "RETURN count(p) AS n", synced_at=synced_at)[0]["n"]
         graph.run(stale + "OPTIONAL MATCH (p)-[:HAS_STEP]->(s:Step) DETACH DELETE s, p", synced_at=synced_at)
     graph.run("MATCH (c:PlaybookCollection) WHERE NOT (c)-[:CONTAINS]->() DETACH DELETE c")

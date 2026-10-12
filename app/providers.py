@@ -6,12 +6,15 @@ registering it in `make_llm` / `make_embedder`.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from typing import Iterator, Protocol
 
 import httpx
 
 from .config import Settings
+
+log = logging.getLogger("graphrag.providers")
 
 
 class LLM(Protocol):
@@ -235,12 +238,12 @@ def _with_backoff(call, attempts: int = 8):
                 raise
             if transient and not rate_limited:
                 delay = min(60.0, 3 * 2 ** attempt)
-                print(f"  network error ({type(exc).__name__}); retrying in {delay:.0f}s", flush=True)
+                log.warning("network error (%s); retrying in %.0fs (attempt %d/%d)", type(exc).__name__, delay, attempt + 1, attempts)
                 time.sleep(delay)
                 continue
             match = re.search(r"retry in ([0-9.]+)s", text) or re.search(r"'retryDelay': '([0-9.]+)s'", text)
             delay = min(90.0, float(match.group(1)) + 1) if match else min(60.0, 5 * 2 ** attempt)
-            print(f"  rate limited; retrying in {delay:.0f}s", flush=True)
+            log.warning("rate limited; retrying in %.0fs (attempt %d/%d)", delay, attempt + 1, attempts)
             time.sleep(delay)
 
 
@@ -253,6 +256,8 @@ class CachedEmbedder:
 
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.inner, self.dim, self.model_key = inner, inner.dim, model_key
+        self.budget: int | None = None   # max NEW embeddings for this run (None = unlimited); cache hits are free
+        self.skipped = 0                 # texts left without a vector because the budget ran out
         self.db = sqlite3.connect(str(path), check_same_thread=False)
         self.db.execute("CREATE TABLE IF NOT EXISTS emb (key TEXT PRIMARY KEY, vec BLOB)")
 
@@ -271,13 +276,24 @@ class CachedEmbedder:
             rows = self.db.execute(f"SELECT key, vec FROM emb WHERE key IN ({','.join('?' * len(chunk))})", chunk)
             found.update({k: array.array("f", v).tolist() for k, v in rows})
         missing = [i for i, k in enumerate(keys) if k not in found]
+        from . import usage
+
+        usage.record("embed_cached", len(keys) - len(missing))
+        left = usage.remaining("embed")  # never exceed today's limit: the rest stays pending
+        if self.budget is not None or left is not None:
+            allowed = min(x for x in (self.budget, left) if x is not None)
+            allowed = max(0, allowed)
+            self.skipped += max(0, len(missing) - allowed)
+            missing = missing[:allowed]
+            if self.budget is not None:
+                self.budget -= len(missing)
         if missing:
             vectors = self.inner.embed([texts[i] for i in missing], query=query)
             self.db.executemany("INSERT OR REPLACE INTO emb VALUES (?, ?)",
                                 [(keys[i], array.array("f", v).tobytes()) for i, v in zip(missing, vectors)])
             self.db.commit()
             found.update({keys[i]: v for i, v in zip(missing, vectors)})
-        return [found[k] for k in keys]
+        return [found.get(k) for k in keys]  # None = over budget, stored without a vector ("pending")
 
 
 def _check_dim(vectors: list[list[float]], dim: int, model: str) -> list[list[float]]:
@@ -289,18 +305,26 @@ def _check_dim(vectors: list[list[float]], dim: int, model: str) -> list[list[fl
 # ---------------------------------------------------------------- factories
 
 def make_llm(s: Settings) -> LLM:
+    from .usage import CachedLLM, MeteredLLM
+
     if s.llm_provider == "gemini":
-        return GeminiLLM(s.llm_model, s.gemini_api_key)
-    if s.llm_provider == "anthropic":
-        return AnthropicLLM(s.llm_model, s.anthropic_api_key)
-    return OllamaLLM(s.llm_model, s.ollama_url)
+        inner = GeminiLLM(s.llm_model, s.gemini_api_key)
+    elif s.llm_provider == "anthropic":
+        inner = AnthropicLLM(s.llm_model, s.anthropic_api_key)
+    else:
+        inner = OllamaLLM(s.llm_model, s.ollama_url)
+    llm = MeteredLLM(inner, s.llm_provider)
+    return CachedLLM(llm, s.llm_cache, f"{s.llm_provider}:{s.llm_model}") if s.llm_cache else llm
 
 
 def make_embedder(s: Settings) -> Embedder:
+    from .usage import MeteredEmbedder
+
     if s.embed_provider == "gemini":
         inner = GeminiEmbedder(s.embed_model, s.gemini_api_key, s.embed_dim, tokens_per_minute=s.embed_tpm)
     else:
         inner = OllamaEmbedder(s.embed_model, s.ollama_url, s.embed_dim)
+    inner = MeteredEmbedder(inner, s.embed_provider)
     if not s.embed_cache:
         return inner
     return CachedEmbedder(inner, s.embed_cache, f"{s.embed_provider}:{s.embed_model}")

@@ -141,7 +141,7 @@ def _load_playbooks(repo_dir: Path, pack: Pack, scrubber: Scrubber) -> list[Play
 
 
 def _tag(pb: Playbook, pack: Pack) -> Playbook:
-    pb.pack, pb.pack_type = pack.label, pack.kind
+    pb.pack, pb.pack_type, pb.pack_repo = pack.label, pack.kind, pack.repo
     return pb
 
 
@@ -209,7 +209,7 @@ def connector_markdown(info: dict, repo_dir: Path, info_path: Path | None) -> st
 WRITE_PACKS = """
 UNWIND $packs AS p
 MERGE (sp:SolutionPack {repo: p.repo})
-SET sp.name = p.name, sp.label = p.label, sp.version = p.version, sp.kind = p.kind,
+SET sp.ingested_at = toString(datetime()), sp.name = p.name, sp.label = p.label, sp.version = p.version, sp.kind = p.kind,
     sp.description = p.description, sp.publisher = p.publisher, sp.category = p.category, sp.url = p.url
 WITH sp, p
 UNWIND p.collections AS coll
@@ -296,9 +296,11 @@ def write_catalog(packs: list[Pack], graph) -> dict:
             "ai_packs": sum(p.kind == "ai" for p in others), "widgets": sum(p.kind == "widget" for p in others)}
 
 
-def load_all(root: Path, scrubber: Scrubber) -> tuple[list[Pack], list[Playbook], list[dict]]:
+def load_all(root: Path, scrubber: Scrubber, only: set[str] | None = None) -> tuple[list[Pack], list[Playbook], list[dict]]:
     packs, playbooks, docs = [], [], []
     for repo_dir in sorted(d for d in root.iterdir() if d.is_dir() and not d.name.endswith(".tmp")):
+        if only is not None and repo_dir.name not in only:
+            continue
         pack, pbs, ds = load_repo(repo_dir, scrubber)
         packs.append(pack)
         playbooks += pbs

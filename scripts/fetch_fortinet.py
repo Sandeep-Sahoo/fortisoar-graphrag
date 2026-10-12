@@ -32,9 +32,23 @@ from pathlib import Path, PurePosixPath
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "data" / "fortinet"
 UA = "fortisoar-graphrag-ingest/1.0 (+internal knowledge base)"
-ORG = "fortinet-fortisoar"
 
-KEEP_PREFIXES = ("connector-", "solution-", "widget-", "ai-")
+
+def _env_setting(name: str, default: str) -> str:
+    """FETCH_ORG / FETCH_PREFIXES come from the environment or .env (editable on the Settings page)."""
+    import os
+
+    try:
+        from dotenv import dotenv_values
+
+        file_value = dotenv_values(ROOT / ".env").get(name)
+    except ImportError:
+        file_value = None
+    return os.environ.get(name) or file_value or default
+
+
+ORG = _env_setting("FETCH_ORG", "fortinet-fortisoar")
+KEEP_PREFIXES = tuple(p.strip() for p in _env_setting("FETCH_PREFIXES", "connector-,solution-,widget-,ai-").split(",") if p.strip())
 KEEP_FILE = re.compile(
     r"(^|/)(info\.json|README\.md|release_notes\.md|collection\.metadata\.json)$"
     r"|(^|/)docs/[^/]+\.md$"

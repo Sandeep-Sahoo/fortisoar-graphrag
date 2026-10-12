@@ -11,6 +11,29 @@ def lucene_query(text: str) -> str:
     return " ".join(words) or "*"
 
 
+# Words that match nearly everything (or nothing useful) in keyword-only search.
+STOPWORDS = set("""a an and are as at be by can do does for from has have how i in is it its me my of on or our
+show should that the their them there these this those to was what when where which who why will with you your
+about all any get give list tell find use used uses using playbook playbooks fortisoar check run need want help
+make does did done also via into""".split())
+
+
+def group_query(words: list[str]) -> str:
+    """Lucene OR-query for one term and its synonyms (multi-word synonyms become phrases)."""
+    parts = []
+    for w in words:
+        clean = LUCENE_SPECIAL.sub(" ", w).strip()
+        if not clean:
+            continue
+        parts.append(f'"{clean}"' if " " in clean else clean)
+    return " OR ".join(parts) or "*"
+
+
+def keyword_terms(text: str) -> list[str]:
+    words = [w for w in LUCENE_SPECIAL.sub(" ", text).split() if w.upper() not in ("AND", "OR", "NOT")]
+    return [w for w in words if w.lower() not in STOPWORDS and len(w) > 1]
+
+
 def rrf(*ranked_lists: list[dict], key: str = "id", k: int = 60) -> list[dict]:
     """Reciprocal rank fusion: robust way to merge vector and keyword rankings."""
     scores: dict[str, float] = {}
@@ -23,15 +46,20 @@ def rrf(*ranked_lists: list[dict], key: str = "id", k: int = 60) -> list[dict]:
 
 
 class Retriever:
-    def __init__(self, graph, embedder, include_proposed_links: bool = False):
+    def __init__(self, graph, embedder, include_proposed_links: bool = False, k: tuple[int, int, int] = (5, 5, 4)):
         self.graph = graph
         self.embedder = embedder
+        self.k_playbooks, self.k_vendor, self.k_internal = k
         self.link_statuses = ["approved", "proposed"] if include_proposed_links else ["approved"]
 
     # ------------------------------------------------------------ entry points
 
+    def _query_vector(self, text: str):
+        """The question's embedding, or None when today's embedding limit is used up (keyword search only)."""
+        return self.embedder.embed([text], query=True)[0]
+
     def search_chunks(self, query: str, source: str | None = None, k: int = 6, vector=None) -> list[dict]:
-        vector = vector or self.embedder.embed([query], query=True)[0]
+        vector = self._query_vector(query) if vector is None else vector  # () = keyword only
         fields = ("node.id AS id, node.text AS text, node.source AS source, node.doc_id AS doc_id, "
                   "node.doc_title AS title, node.version AS version")
         filt = "WHERE $source IS NULL OR node.source = $source"
@@ -39,7 +67,7 @@ class Retriever:
             f"CALL db.index.vector.queryNodes('chunk_embedding', $n, $vec) YIELD node, score {filt} "
             f"RETURN {fields} ORDER BY score DESC LIMIT $k",
             n=k * 4, vec=vector, source=source, k=k,
-        )
+        ) if vector else []
         kw = self.graph.read(
             f"CALL db.index.fulltext.queryNodes('chunk_text', $q) YIELD node, score {filt} "
             f"RETURN {fields} ORDER BY score DESC LIMIT $k",
@@ -48,12 +76,12 @@ class Retriever:
         return rrf(vec, kw)[:k]
 
     def search_playbooks(self, query: str, k: int = 5, vector=None) -> list[dict]:
-        vector = vector or self.embedder.embed([query], query=True)[0]
+        vector = self._query_vector(query) if vector is None else vector  # () = keyword only
         vec = self.graph.read(
             "CALL db.index.vector.queryNodes('playbook_embedding', $k, $vec) YIELD node, score "
             "RETURN node.uuid AS id, node.name AS name, node.summary AS summary",
             k=k, vec=vector,
-        )
+        ) if vector else []
         # Keyword hits on steps / connectors / modules are mapped back to the playbooks that use them.
         kw = self.graph.read(
             """
@@ -151,13 +179,106 @@ class Retriever:
 
     # Split into stages so the chat UI can show progress: search -> expand -> assemble.
 
+    PLAYBOOK_FILTER = """
+        NOT coalesce(p.placeholder, false)
+        AND ($pack IS NULL OR p.pack = $pack)
+        AND ($trigger IS NULL OR p.trigger_type = $trigger)
+        AND ($origin IS NULL OR ($origin = 'upload') = (coalesce(p.pack_type, '') = 'upload'))
+        AND ($connector IS NULL OR EXISTS { (p)-[:HAS_STEP]->(:Step)-[:USES]->(:ConnectorOperation)-[:OF]->(:Connector {name: $connector}) })
+        AND ($module IS NULL OR EXISTS { (p)-[:TRIGGERED_ON|ACTS_ON]->(:Module {name: $module}) })
+    """
+    FILTER_KEYS = ("pack", "trigger", "origin", "connector", "module")
+
+    def search_keyword(self, question: str, filters: dict | None = None) -> dict:
+        """Graph-only search: full-text indexes, no embedding call.
+
+        Each search term (plus its synonyms) is a group; results that match more groups rank first,
+        so "virustotal file hash" prefers playbooks matching all three over ones matching only "file".
+        Each hit says which terms matched and where. Filters narrow playbooks by pack, trigger,
+        connector, module or origin (github / upload)."""
+        from .search_store import expand
+
+        params = {k: (filters or {}).get(k) or None for k in self.FILTER_KEYS}
+        terms = keyword_terms(question)
+        groups = expand(question, terms) if terms else []
+        if not groups:
+            if not any(params.values()):
+                return {"playbooks": [], "vendor": [], "internal": [], "terms": [], "groups": []}
+            rows = self.graph.read(
+                f"MATCH (p:Playbook) WHERE {self.PLAYBOOK_FILTER} "
+                "RETURN p.uuid AS id, p.name AS name, p.summary AS summary ORDER BY p.name LIMIT 40", **params)
+            return {"playbooks": [{**r, "why": ["matches the filters"], "matched": 0} for r in rows],
+                    "vendor": [], "internal": [], "terms": [], "groups": [], "filters": {k: v for k, v in params.items() if v}}
+
+        by_pb: dict[str, dict] = {}
+        for gi, group in enumerate(groups):
+            rows = self.graph.read(
+                f"""
+                CALL db.index.fulltext.queryNodes('entity_text', $q) YIELD node, score
+                WITH node, score,
+                  CASE
+                    WHEN node:Playbook THEN [node]
+                    WHEN node:Step THEN [(p:Playbook)-[:HAS_STEP]->(node) | p]
+                    WHEN node:ConnectorOperation THEN [(p:Playbook)-[:HAS_STEP]->(:Step)-[:USES]->(node) | p]
+                    WHEN node:Connector THEN [(p:Playbook)-[:HAS_STEP]->(:Step)-[:USES]->(:ConnectorOperation)-[:OF]->(node) | p]
+                    WHEN node:Module THEN [(p:Playbook)-[:TRIGGERED_ON]->(node) | p]
+                    ELSE [] END AS playbooks,
+                  CASE WHEN node:Playbook THEN 'name / description'
+                       WHEN node:Step THEN 'step "' + node.name + '"'
+                       WHEN node:ConnectorOperation THEN 'connector action ' + coalesce(node.title, node.name)
+                       WHEN node:Connector THEN 'connector ' + node.name
+                       WHEN node:Module THEN 'triggered on ' + node.name
+                       ELSE labels(node)[0] END AS why
+                UNWIND playbooks AS p
+                WITH p, max(score) AS score, collect(DISTINCT why)[0..2] AS why WHERE {self.PLAYBOOK_FILTER}
+                RETURN p.uuid AS id, p.name AS name, p.summary AS summary, why, score
+                ORDER BY score DESC LIMIT 200
+                """,
+                q=group_query(group), **params,
+            )
+            for r in rows:
+                hit = by_pb.setdefault(r["id"], {"id": r["id"], "name": r["name"], "summary": r["summary"],
+                                                 "why": [], "groups": set(), "score": 0.0})
+                hit["groups"].add(gi)
+                hit["score"] += r["score"]
+                hit["why"] += [w for w in r["why"] if w not in hit["why"]]
+        ranked = sorted(by_pb.values(), key=lambda h: (-len(h["groups"]), -h["score"]))[: self.k_playbooks + 3]
+        playbooks = [{"id": h["id"], "name": h["name"], "summary": h["summary"], "why": h["why"][:4],
+                      "matched": len(h["groups"]), "of": len(groups),
+                      "terms": [groups[i][0] for i in sorted(h["groups"])], "score": round(h["score"], 2)}
+                     for h in ranked]
+
+        fields = ("node.id AS id, node.text AS text, node.source AS source, node.doc_id AS doc_id, "
+                  "node.doc_title AS title, node.version AS version, score")
+
+        def chunks(source: str, k: int) -> list[dict]:
+            if not k:
+                return []
+            by_chunk: dict[str, dict] = {}
+            for gi, group in enumerate(groups):
+                rows = self.graph.read(
+                    f"CALL db.index.fulltext.queryNodes('chunk_text', $q) YIELD node, score WHERE node.source = $source "
+                    "AND ($pack IS NULL OR EXISTS { (d:Document)-[:HAS_CHUNK]->(node) WHERE d.pack = $pack }) "
+                    f"RETURN {fields} ORDER BY score DESC LIMIT 100", q=group_query(group), source=source, pack=params["pack"])
+                for r in rows:
+                    hit = by_chunk.setdefault(r["id"], {**r, "groups": set(), "score": 0.0})
+                    hit["groups"].add(gi)
+                    hit["score"] += r["score"]
+            best = sorted(by_chunk.values(), key=lambda h: (-len(h["groups"]), -h["score"]))[:k]
+            return [{**{k2: v for k2, v in h.items() if k2 != "groups"}, "matched": len(h["groups"]), "of": len(groups),
+                     "score": round(h["score"], 2)} for h in best]
+
+        return {"playbooks": playbooks, "vendor": chunks("vendor", self.k_vendor),
+                "internal": chunks("internal", self.k_internal), "terms": [g[0] for g in groups],
+                "groups": groups, "filters": {k: v for k, v in params.items() if v}}
+
     def search_all(self, question: str) -> dict:
         """Stage 1: hybrid search entry points (playbooks, vendor chunks, internal chunks)."""
-        vector = self.embedder.embed([question], query=True)[0]
+        vector = self._query_vector(question) or ()  # () -> keyword search only
         return {
-            "playbooks": self.search_playbooks(question, k=5, vector=vector),
-            "vendor": self.search_chunks(question, source="vendor", k=5, vector=vector),
-            "internal": self.search_chunks(question, source="internal", k=4, vector=vector),
+            "playbooks": self.search_playbooks(question, k=self.k_playbooks, vector=vector),
+            "vendor": self.search_chunks(question, source="vendor", k=self.k_vendor, vector=vector) if self.k_vendor else [],
+            "internal": self.search_chunks(question, source="internal", k=self.k_internal, vector=vector) if self.k_internal else [],
         }
 
     def expand(self, hits: dict) -> dict:

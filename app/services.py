@@ -57,7 +57,9 @@ class Services:
 
     @cached_property
     def retriever(self) -> Retriever:
-        return Retriever(self.graph, self.embedder, self.settings.include_proposed_links)
+        s = self.settings
+        return Retriever(self.graph, self.embedder, s.include_proposed_links,
+                         k=(s.retrieval_playbooks_k, s.retrieval_vendor_k, s.retrieval_internal_k))
 
     # ------------------------------------------------------------ tools
 

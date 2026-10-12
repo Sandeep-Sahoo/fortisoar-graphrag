@@ -14,13 +14,24 @@ import re
 
 # step kind / trigger type -> words that identify the vendor doc about that feature (matched in its title)
 FEATURE_DOCS = {
-    "manual_input": ("manual input", "approval step (Manual Input)"),
-    "decision": ("decision step", "branches with a Decision step"),
-    "reference": ("reference a playbook", "calls child playbooks"),
-    "trigger:manual": ("playbook triggers", "manual trigger"),
-    "trigger:record_event": ("playbook triggers", "record create/update trigger"),
-    "trigger:api_endpoint": ("playbook triggers", "custom API endpoint trigger"),
-    "secret": ("connectors overview", "hard-coded credential: see where connector credentials belong"),
+    # step kind / trigger type -> (words in the vendor doc title, reason). Matches the Playbooks Guide's
+    # step chapters ("Core/Evaluate/Execute/References Steps") as well as older per-feature docs.
+    "manual_input": (("evaluate steps", "manual input"), "approval / manual input step"),
+    "decision": (("evaluate steps", "decision step"), "branches with a Decision step"),
+    "wait": (("evaluate steps",), "uses a Wait step"),
+    "reference": (("references steps", "reference a playbook"), "calls child playbooks"),
+    "create_record": (("core steps",), "creates records"),
+    "update_record": (("core steps",), "updates records"),
+    "find_records": (("core steps",), "finds records"),
+    "set_variable": (("core steps",), "sets variables"),
+    "connector": (("execute steps",), "calls connector actions"),
+    "code_snippet": (("execute steps",), "runs a code snippet"),
+    "utility": (("execute steps",), "uses utility actions"),
+    "trigger:manual": (("trigger steps", "playbook triggers"), "manual trigger"),
+    "trigger:record_event": (("trigger steps", "playbook triggers"), "record create/update trigger"),
+    "trigger:api_endpoint": (("trigger steps", "playbook triggers"), "custom API endpoint trigger"),
+    "trigger:referenced": (("trigger steps",), "started by other playbooks"),
+    "secret": (("security considerations", "connectors overview"), "hard-coded credential: see credential guidance"),
 }
 
 
@@ -92,7 +103,7 @@ def derive_links(graph) -> dict:
     for connector in all_connectors - set(by_connector):
         words = _connector_title(connector)
         by_connector[connector] = [d["id"] for d in vendor_docs if len(words) >= 4 and words in d["title"]]
-    feature_docs = {feature: [d["id"] for d in vendor_docs if words in d["title"]]
+    feature_docs = {feature: [d["id"] for d in vendor_docs if any(w in d["title"] for w in words)]
                     for feature, (words, _) in FEATURE_DOCS.items()}
 
     links: dict[tuple[str, str], set[str]] = {}

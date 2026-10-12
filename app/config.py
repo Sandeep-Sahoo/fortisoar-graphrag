@@ -64,6 +64,23 @@ class Settings:
     app_username: str
     app_password: str
     session_hours: int
+    retrieval_playbooks_k: int
+    retrieval_vendor_k: int
+    retrieval_internal_k: int
+    chat_history_turns: int
+    overview_playbook_limit: int
+    fetch_org: str
+    fetch_prefixes: tuple[str, ...]
+    log_level: str
+    llm_daily_limit: int = 20
+    embed_daily_limit: int = 1000
+    enforce_daily_limits: bool = True
+    llm_cache: str = ""
+    sync_schedule: str = "off"
+    sync_auto_ingest: bool = False
+    sync_sources: bool = True
+    git_token: str | None = None
+    git_token_user: str = "x-access-token"
 
     def validate(self) -> None:
         errors = []
@@ -79,6 +96,23 @@ class Settings:
             errors.append("NEO4J_URI is required (cloud mode has no default)")
         if not self.neo4j_password:
             errors.append("NEO4J_PASSWORD is required")
+        for name, value, low, high in (("RETRIEVAL_PLAYBOOKS_K", self.retrieval_playbooks_k, 1, 20),
+                                       ("RETRIEVAL_VENDOR_K", self.retrieval_vendor_k, 0, 20),
+                                       ("RETRIEVAL_INTERNAL_K", self.retrieval_internal_k, 0, 20),
+                                       ("CHAT_HISTORY_TURNS", self.chat_history_turns, 0, 30),
+                                       ("OVERVIEW_PLAYBOOK_LIMIT", self.overview_playbook_limit, 10, 5000),
+                                       ("SESSION_HOURS", self.session_hours, 1, 720), ("EMBED_DIM", self.embed_dim, 64, 4096)):
+            if not low <= value <= high:
+                errors.append(f"{name} must be between {low} and {high}")
+        if self.sync_schedule not in ("off", "daily", "weekly"):
+            errors.append("SYNC_SCHEDULE must be off, daily or weekly")
+        for name, value in (("LLM_DAILY_LIMIT", self.llm_daily_limit), ("EMBED_DAILY_LIMIT", self.embed_daily_limit)):
+            if not 0 <= value <= 10_000_000:
+                errors.append(f"{name} must be 0 (no limit) or a positive number")
+        if self.log_level not in ("DEBUG", "INFO", "WARNING", "ERROR"):
+            errors.append("LOG_LEVEL must be DEBUG, INFO, WARNING or ERROR")
+        if not self.app_username or not self.app_password:
+            errors.append("APP_USERNAME and APP_PASSWORD must not be empty")
         if self.mode == "cloud" and (self.app_username, self.app_password) == ("admin", "admin"):
             errors.append("cloud mode requires APP_USERNAME/APP_PASSWORD to be changed from admin/admin")
         if self.mode == "full-local":
@@ -134,6 +168,24 @@ def get_settings() -> Settings:
         app_username=_env("APP_USERNAME", "admin"),
         app_password=_env("APP_PASSWORD", "admin"),
         session_hours=int(_env("SESSION_HOURS", "12")),
+        retrieval_playbooks_k=int(_env("RETRIEVAL_PLAYBOOKS_K", "5")),
+        retrieval_vendor_k=int(_env("RETRIEVAL_VENDOR_K", "5")),
+        retrieval_internal_k=int(_env("RETRIEVAL_INTERNAL_K", "4")),
+        chat_history_turns=int(_env("CHAT_HISTORY_TURNS", "6")),
+        overview_playbook_limit=int(_env("OVERVIEW_PLAYBOOK_LIMIT", "300")),
+        fetch_org=_env("FETCH_ORG", "fortinet-fortisoar"),
+        fetch_prefixes=tuple(x.strip() for x in _env("FETCH_PREFIXES", "connector-,solution-,widget-,ai-").split(",") if x.strip()),
+        log_level=_env("LOG_LEVEL", "INFO").upper(),
+        # free-tier defaults (Gemini: ~20 answer requests and ~1,000 embeddings a day); 0 = no limit
+        llm_daily_limit=int(_env("LLM_DAILY_LIMIT", "20")),
+        embed_daily_limit=int(_env("EMBED_DAILY_LIMIT", "1000")),
+        enforce_daily_limits=_env("ENFORCE_DAILY_LIMITS", "true").lower() == "true",
+        llm_cache=_env("LLM_CACHE", str(Path(__file__).resolve().parent.parent / "data" / ".cache" / "llm.sqlite")),
+        sync_schedule=_env("SYNC_SCHEDULE", "off").lower(),
+        sync_auto_ingest=_env("SYNC_AUTO_INGEST", "false").lower() == "true",
+        sync_sources=_env("SYNC_SOURCES", "true").lower() == "true",
+        git_token=_env("GIT_TOKEN"),
+        git_token_user=_env("GIT_TOKEN_USER", "x-access-token"),
     )
     settings.validate()
     return settings

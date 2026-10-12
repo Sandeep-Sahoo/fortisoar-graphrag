@@ -61,3 +61,36 @@ def test_embedding_cache_only_embeds_missing(tmp_path):
     assert cache.embed(["bb", "ccc"]) == [[2.0, 0.0, 1.0], [3.0, 0.0, 1.0]]
     assert inner.calls == [["a", "bb"], ["ccc"]]            # "bb" came from the cache
     assert CachedEmbedder(Inner(), tmp_path / "c.sqlite", "other:model").embed(["a"]) == [[1.0, 0.0, 1.0]]
+
+
+def test_graph_only_mode_makes_no_model_calls():
+    from types import SimpleNamespace
+
+    from app.chat import chat_events
+    from app.retrieval import keyword_terms
+
+    assert keyword_terms("Which playbooks use VirusTotal to block an IP?") == ["VirusTotal", "block", "IP"]
+
+    class Boom:
+        def __getattr__(self, name):
+            raise AssertionError(f"model API used: {name}")
+
+    class Store:
+        def get(self, sid): return {"messages": [{"role": "user"}], "title": "t"}
+        def history(self, sid, n): return [{"role": "user", "content": "earlier question"}]
+        def add(self, *a, **k): return "m1"
+        def rename(self, *a): pass
+
+    hits = {"playbooks": [{"id": "u1", "name": "Block IP", "why": ["connector virustotal"]}],
+            "vendor": [], "internal": [], "terms": ["virustotal"]}
+    retriever = SimpleNamespace(
+        search_keyword=lambda q, f=None: hits, search_all=lambda q: Boom().search_all,
+        expand=lambda h: {**h, "linked": []},
+        assemble=lambda h: ("ctx", [{"label": "C1", "type": "playbook", "uuid": "u1", "name": "Block IP"}]))
+    svc = SimpleNamespace(chats=Store(), retriever=retriever, llm=Boom(), embedder=Boom(),
+                          settings=SimpleNamespace(chat_history_turns=6),
+                          playbook_graph=lambda uuids, steps: {"nodes": [1], "edges": []})
+    events = list(chat_events(svc, "s1", "and virustotal?", mode="graph"))
+    assert events[-1]["type"] == "done" and events[-1]["playbooks"] == [{"uuid": "u1", "name": "Block IP"}]
+    text = "".join(e["text"] for e in events if e["type"] == "token")
+    assert "Graph-only" in text and "Block IP" in text and "connector virustotal" in text

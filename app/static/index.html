@@ -4,19 +4,29 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:,">
+<script>try{var t=localStorage.getItem("graphrag.theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 <title>FortiSOAR Graph RAG</title>
 <style>
   :root {
     --bg: #f7f7f5; --panel: #ffffff; --sunk: #f1efe8; --text: #1f1f1d; --muted: #6b6a65; --border: #e2e0d8;
     --accent: #534AB7; --accent-bg: #EEEDFE; --accent-text: #3C3489; --danger: #A32D2D; --ok: #0F6E56;
     --pb: #7F77DD; --step: #B4B2A9; --op: #5DCAA5; --con: #1D9E75; --mod: #EF9F27; --doc: #D4537E; --coll: #378ADD;
-    --edge: #b4b2a9; --active: #EF9F27; --pack: #D85A30;
+    --edge: #b4b2a9; --active: #EF9F27; --pack: #D85A30; color-scheme: light;
   }
+  /* theme: system preference unless the user picked light or dark (data-theme on <html>) */
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #1c1c1a; --panel: #262624; --sunk: #2f2f2c; --text: #ecebe6; --muted: #a3a29c; --border: #3a3a37;
+    :root:not([data-theme="light"]) { --bg: #1c1c1a; --panel: #262624; --sunk: #2f2f2c; --text: #ecebe6; --muted: #a3a29c; --border: #3a3a37;
             --accent: #AFA9EC; --accent-bg: #2f2b55; --accent-text: #CECBF6; --danger: #F09595; --ok: #5DCAA5;
-            --step: #5F5E5A; --edge: #5F5E5A; }
+            --step: #5F5E5A; --edge: #5F5E5A; color-scheme: dark; }
   }
+  :root[data-theme="dark"] { --bg: #1c1c1a; --panel: #262624; --sunk: #2f2f2c; --text: #ecebe6; --muted: #a3a29c; --border: #3a3a37;
+            --accent: #AFA9EC; --accent-bg: #2f2b55; --accent-text: #CECBF6; --danger: #F09595; --ok: #5DCAA5;
+            --step: #5F5E5A; --edge: #5F5E5A; color-scheme: dark; }
+  .log-view { max-height: 460px; overflow: auto; font-size: 12px; background: var(--sunk); border-radius: 10px; padding: 8px 10px; margin: 8px 0 0; }
+  .log-view div { white-space: pre-wrap; border-bottom: 1px solid var(--border); padding: 3px 0; font-family: ui-monospace, Menlo, monospace; }
+  .log-view .ERROR, .log-view .CRITICAL { color: var(--danger); }
+  .log-view .WARNING { color: var(--active); }
+  .log-view .DEBUG { color: var(--muted); }
   * { box-sizing: border-box; }
   html, body { height: 100%; }
   body { margin: 0; font: 14px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
@@ -152,7 +162,10 @@
   #composer { border-top: 1px solid var(--border); padding: 12px 16px; background: var(--panel); }
   #composer .row { display: flex; gap: 8px; align-items: flex-end; }
   #composer textarea { flex: 1; resize: none; min-height: 42px; max-height: 160px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
-  #composer .hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  #composer .hint { font-size: 11px; color: var(--muted); margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  #composer .mode { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; color: var(--text); }
+  #composer.graph-only textarea { border-color: var(--ok); }
+  #composer .mode-note { color: var(--ok); }
 
   /* graph panel */
   #graphpanel { display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
@@ -305,6 +318,93 @@
     .guide table { display: block; overflow-x: auto; }
   }
 
+  /* github page */
+  #view-github { display: flex; flex-direction: column; height: calc(100vh - 50px); }
+  #gh-top { padding: 14px 16px 0; background: var(--panel); border-bottom: 1px solid var(--border); }
+  #gh-top h1 { font-size: 18px; font-weight: 600; margin: 0 0 4px; }
+  #gh-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 10px 0; }
+  #gh-cards .card { background: var(--sunk); border-radius: 12px; padding: 8px 12px; }
+  #gh-cards .card b { display: block; font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  #gh-cards .card span { font-size: 12px; color: var(--muted); }
+  .meter { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; margin-top: 5px; }
+  .meter span { display: block; height: 100%; background: var(--ok); }
+  #gh-table-wrap { flex: 1; overflow: auto; }
+  #gh-table td .sub { display: block; }
+  #gh-table tr.picked { background: var(--accent-bg); }
+  .pick { min-width: 74px; }
+  .pick[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+  .status-tag { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--sunk); white-space: nowrap; }
+  .status-tag.complete { color: var(--ok); } .status-tag.partial { color: var(--active); } .status-tag.empty { color: var(--muted); }
+  #gh-bar { display: none; gap: 10px; align-items: center; flex-wrap: wrap; padding: 10px 16px; border-top: 1px solid var(--active); background: var(--panel); }
+  #gh-bar.show { display: flex; }
+  #gh-bar .spacer { flex: 1; }
+  #gh-bar input[type=number] { width: 90px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  #gh-job:empty { display: none; }
+  #gh-table tbody tr[data-repo] { cursor: pointer; }
+  #gh-table .acts { display: flex; gap: 4px; flex-wrap: wrap; }
+  #gh-table .acts button { font-size: 12px; padding: 3px 8px; }
+  .status-tag.stale { color: var(--danger); }
+  #gh-drawer { position: fixed; top: 50px; right: 0; bottom: 0; width: min(460px, 100vw); background: var(--panel); border-left: 1px solid var(--border);
+               box-shadow: -8px 0 24px rgba(0,0,0,.12); overflow: auto; padding: 16px 18px 24px; z-index: 40; }
+  #gh-drawer[hidden] { display: none; }
+  #gh-drawer h2 { font-size: 17px; margin: 0 28px 2px 0; }
+  #gh-drawer h3 { font-size: 13px; margin: 16px 0 6px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+  #gh-drawer .close { position: absolute; top: 12px; right: 12px; }
+  #gh-drawer dl { display: grid; grid-template-columns: 130px 1fr; gap: 4px 10px; margin: 0; font-size: 13px; }
+  #gh-drawer dt { color: var(--muted); } #gh-drawer dd { margin: 0; overflow-wrap: anywhere; }
+  #gh-drawer ul { margin: 0; padding-left: 18px; font-size: 13px; }
+  #gh-drawer .acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  #gh-drawer .note { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  #gh-job { padding: 0 16px 10px; background: var(--panel); }
+
+  /* settings */
+  #view-settings { display: grid; grid-template-columns: 230px minmax(0, 1fr); height: calc(100vh - 50px); }
+  #settings-nav { border-right: 1px solid var(--border); background: var(--panel); padding: 16px 10px; overflow-y: auto; }
+  #settings-nav h2 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 10px 8px 6px; text-transform: uppercase; letter-spacing: .04em; }
+  #settings-nav button { display: block; width: 100%; text-align: left; border: 0; background: none; padding: 6px 8px; border-radius: 8px; font-size: 13px; color: var(--text); }
+  #settings-nav button:hover, #settings-nav button.on { background: var(--accent-bg); color: var(--accent-text); }
+  #settings-body { overflow-y: auto; padding: 22px 30px 110px; }
+  .settings { max-width: 900px; }
+  .settings h1 { font-size: 22px; font-weight: 600; margin: 0 0 4px; }
+  .settings h2 { font-size: 17px; font-weight: 600; margin: 30px 0 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .settings .lead { color: var(--muted); margin: 0 0 12px; }
+  .field { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 4px 16px; padding: 10px 0; border-bottom: 1px solid var(--border); align-items: start; }
+  .field label { font-weight: 600; font-size: 13px; padding-top: 7px; }
+  .field label code { font-weight: 400; font-size: 11px; color: var(--muted); display: block; }
+  .field .help { grid-column: 2; font-size: 12px; color: var(--muted); }
+  .field input[type=text], .field input[type=number], .field input[type=password], .field select {
+    width: 100%; max-width: 460px; padding: 7px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+  .field.dirty input, .field.dirty select { border-color: var(--active); }
+  .field .eff { font-size: 12px; color: var(--muted); margin-left: 6px; }
+  .field.danger label::after { content: " ⚠"; color: var(--danger); }
+  .switch { display: inline-flex; align-items: center; gap: 8px; padding-top: 6px; font-size: 13px; }
+  #settings-save { position: sticky; bottom: 0; display: none; align-items: center; gap: 10px; padding: 12px 14px; margin-top: 16px;
+                   background: var(--panel); border: 1px solid var(--active); border-radius: 12px; }
+  #settings-save.show { display: flex; }
+  #settings-save .spacer { flex: 1; }
+  .ops { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+  .op { border: 1px solid var(--border); border-radius: 12px; padding: 12px; background: var(--panel); display: flex; flex-direction: column; gap: 8px; }
+  .op.destructive { border-color: var(--danger); }
+  .op b { font-size: 14px; } .op p { margin: 0; font-size: 12.5px; color: var(--muted); flex: 1; }
+  .op .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 12px; }
+  .jobbox { border: 1px solid var(--border); border-radius: 12px; margin-top: 12px; background: var(--panel); }
+  .jobbox .head { display: flex; gap: 8px; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .jobbox pre { margin: 0; padding: 10px 12px; max-height: 300px; overflow: auto; font-size: 12px; background: var(--sunk); border-radius: 0 0 12px 12px; white-space: pre-wrap; }
+  .status-pill { font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--sunk); }
+  .status-pill.running { color: var(--active); } .status-pill.done { color: var(--ok); } .status-pill.failed, .status-pill.cancelled { color: var(--danger); }
+  .settings table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  .settings th, .settings td { border-top: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+  .settings th { color: var(--muted); font-weight: 600; font-size: 12px; }
+  .toast { position: fixed; right: 18px; bottom: 18px; z-index: 60; background: var(--panel); border: 1px solid var(--ok); border-radius: 10px; padding: 10px 14px; font-size: 13px; max-width: 420px; }
+  .toast.err { border-color: var(--danger); }
+  @media (max-width: 900px) {
+    #view-settings { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto auto; height: auto; }
+    #settings-nav { border-right: 0; border-bottom: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 4px; }
+    #settings-nav h2 { width: 100%; } #settings-nav button { width: auto; }
+    #settings-body { padding: 16px; }
+    .field { grid-template-columns: 1fr; } .field .help { grid-column: 1; }
+  }
+
   @media (max-width: 720px) {
     #user { display: none; }
   }
@@ -325,6 +425,7 @@
     *, *::before, *::after { animation: none !important; transition: none !important; }
   }
 </style>
+<link rel="stylesheet" href="/static/css/platform.css">
 </head>
 <body>
 <header>
@@ -333,11 +434,17 @@
     <a href="#home" data-view="home">Home</a>
     <a href="#browse/playbooks" data-view="browse">Catalog</a>
     <a href="#chat" data-view="chat">Chat</a>
+    <a href="#review" data-view="review">Review</a>
+    <a href="#insights" data-view="insights">Insights</a>
+    <a href="#github" data-view="github">GitHub</a>
     <a href="#guide" data-view="guide">Guide</a>
+    <a href="#settings" data-view="settings">Settings</a>
   </nav>
   <span class="badge" id="mode">connecting…</span>
   <span class="spacer"></span>
+  <button type="button" id="usage-chip" class="usage-chip" title="Model usage today" hidden></button>
   <span id="user"></span>
+  <button id="btn-theme" type="button" aria-label="Theme">◐</button>
   <button id="btn-logout" title="Sign out" aria-label="Sign out"><span aria-hidden="true">⏻</span><span class="txt"> Sign out</span></button>
 </header>
 
@@ -412,7 +519,11 @@
       <tr><td><b>Home</b></td><td>Stat tiles (click to open the Catalog), the circular overview graph, the selected-node panel and a list of packs or collections.</td><td>Double-click a node to pull its direct links into a readable ring. Use ↺ Replay to re-run the animation. Click the legend to hide or show node types.</td></tr>
       <tr><td><b>Catalog</b></td><td>Tabs for solution packs, playbooks, collections, connectors and documents, each with search, filter and sortable columns, plus a detail panel.</td><td>Click a row. Every name in a detail panel is a link. Open the inline flowchart or sequence diagram for a playbook. Use Show on Home and Ask in chat.</td></tr>
       <tr><td><b>Chat</b></td><td>Saved conversations on the left, the thread in the middle, and the graph of the cited playbooks on the right.</td><td>Ask a question, then a follow-up ("which of those need approval?"). Click a citation chip. Press ▶ Play to walk through a playbook.</td></tr>
+      <tr><td><b>Review</b></td><td>Your own playbooks (uploaded or from a connected Git repo), their best-practice reviews and scores, and the best-practice catalogue.</td><td>Upload an export, open a review, answer the manual checklist, set the status. Add your own best practice on the Best practices tab.</td></tr>
+      <tr><td><b>Insights</b></td><td>Connector impact, duplicate playbooks, coverage gaps, call chains, security findings and recent changes, all computed from the graph.</td><td>Pick a connector to see its blast radius. Open a deep call chain as a tree. Export any table as CSV.</td></tr>
+      <tr><td><b>GitHub</b></td><td>Every downloaded repo with what's loaded and embedded, ingest history (with playbook diffs), and the embedding planner.</td><td>Re-ingest or Continue a repo. Check the planner before spending embedding quota.</td></tr>
       <tr><td><b>Guide</b></td><td>This page. The numbers in it are read live from the graph.</td><td>Use it to check what data is loaded right now.</td></tr>
+      <tr><td><b>Settings</b></td><td>Every configurable value (models, keys, database, sign-in, retrieval, data sources), operations (fetch, ingest, derive links, link docs, indexes, wipe) with live logs, doc-link review, connection tests and browser preferences.</td><td>Change a setting and Save &amp; apply (no restart needed). Run "Rebuild derived links". Test the Neo4j connection.</td></tr>
     </table>
 
     <h2 id="g-sources">3. Where the data comes from</h2>
@@ -548,7 +659,46 @@
     </ol>
     <div class="callout">Listing questions ("which playbooks…") see only the top search results, so they can miss items in a large graph. Use the Catalog filters for complete lists.</div>
 
-    <h2 id="g-config">9. Modes, models and access</h2>
+    <h3>Graph-only mode (no AI)</h3>
+    <p>Tick <b>Graph only (no AI)</b> under the chat box to search without any model call. Your words (minus common ones) and their <b>synonyms</b> (editable: Chat → Synonyms) are matched
+      against playbooks, steps, connectors, modules and docs; playbooks matching more of your terms rank first and each hit says what matched. <b>Filters</b> narrow by solution pack,
+      connector, trigger, module or origin (Fortinet GitHub / your uploads). <b>Save</b> a search to re-run it after each ingest (the sidebar shows the change in result count),
+      or copy a <b>link</b> that runs it for a colleague.</p>
+
+    <h2 id="g-review">9. Reviewing playbooks</h2>
+    <p><b>Your playbooks.</b> On Review → Your playbooks, upload FortiSOAR exports (collection or single-playbook JSON, or ZIPs of them) or connect a Git repository
+      (HTTPS; a read-only token in Settings for private repos). Files are parsed as data and never executed; Git clones run without hooks, submodules or symlinks and keep only JSON.
+      Uploaded playbooks join the graph with their own IDs (so they never overwrite Fortinet's), linked to the connectors, modules, child playbooks and docs they use;
+      a playbook that is a copy of a Fortinet one gets a <code>COPY_OF</code> link and its review shows what you changed. Re-pull a Git source or add files to see what changed between versions.</p>
+    <p><b>Best practices.</b> 31 built-in rules across Security, Reliability, Performance, Maintainability and Governance (e.g. hard-coded credentials, containment without approval,
+      decisions without a default branch, unhandled connector failures, debug mode, unfiltered record triggers, missing descriptions), plus a manual checklist.
+      Add your own on Review → Best practices: a manual checklist question, or an automatic check (text that must / must not appear, name patterns, required or forbidden step types,
+      forbidden connectors, maximum steps, required fields). Built-in rules can be disabled, re-weighted or given another severity.</p>
+    <p><b>Scoring.</b> Each playbook starts at 100; each finding deducts points by severity (critical 25, high 12, medium 6, low 2, info 0) × the rule's weight, at most twice the severity per rule.
+      Grade A ≥ 90, B ≥ 80, C ≥ 70, D ≥ 60, otherwise F; a critical finding caps the grade at D. Verdict: <i>Request changes</i> (critical, or score &lt; 70), <i>Approve with changes</i> (high, or &lt; 85),
+      otherwise <i>Approve</i>. Until the manual checklist is answered the score is provisional; a failed check deducts points. Each review has a reviewer-style summary, findings with the step,
+      masked evidence and a suggested fix, a status (open, in review, changes requested, approved) with notes, score history, and optional <b>AI reviewer notes</b> (one model request, on request only).
+      Fortinet's own playbooks can be scored too (Review → Score Fortinet playbooks, no AI).</p>
+
+    <h2 id="g-insights">10. Insights, exports and sharing</h2>
+    <ul>
+      <li><b>Connector impact:</b> every playbook using a connector, the parent playbooks that call those, the packs, modules and operations involved.</li>
+      <li><b>Duplicates:</b> playbooks with identical structure, and near-duplicates by step similarity.</li>
+      <li><b>Coverage gaps:</b> modules nothing triggers on, unused connectors, child playbooks nobody calls, calls to missing playbooks, undocumented and inactive playbooks.</li>
+      <li><b>Call chains:</b> deepest chains, most-called building blocks, cycles, and a tree for any playbook.</li>
+      <li><b>Security:</b> hard-coded credentials plus every security finding from the reviews. <b>Changes:</b> GitHub ingests with added / removed / changed playbooks, and your playbooks that changed.</li>
+      <li><b>Exports:</b> playbook and solution-pack documentation as Markdown or a print-ready page (Save as PDF), with an append-only version history; review reports; CSV of every table;
+        the graph as PNG; diagrams as SVG or PNG (open a diagram, then ⤓). <b>Links:</b> 🔗 buttons copy a link to a catalog page, review, insights view, chat or search.</li>
+    </ul>
+
+    <h2 id="g-access">11. Usage limits, roles and audit</h2>
+    <p>The header shows today's model usage (answers and embeddings) against the daily limits in Settings; when <i>Stop at the daily limits</i> is on, answers stop and embeddings stay pending
+      instead of hitting provider errors. Identical questions over identical context are answered from the <b>answer cache</b> for free. A local Ollama model (mode full-local) has no limits.
+      Every AI action (chat answer, Explain, AI reviewer notes) asks first and shows what's left. Roles: <b>admin</b> (everything), <b>analyst</b> (AI, uploads, reviews, best practices),
+      <b>viewer</b> (read-only, graph-only chat); manage users under Settings → Users. The audit log records sign-ins, settings changes (keys only), jobs, uploads, reviews, rule changes and AI use.
+      The scheduled sync (Settings → Data sources) re-downloads changed GitHub repos and re-pulls your Git sources without using the AI model.</p>
+
+    <h2 id="g-config">12. Modes, models and access</h2>
     <table>
       <tr><th>Mode</th><th>Graph</th><th>Language model / embeddings</th><th>Data leaves the machine?</th></tr>
       <tr><td>local</td><td>Neo4j in Docker</td><td>hosted (Gemini by default)</td><td>yes, to the model API</td></tr>
@@ -556,17 +706,22 @@
       <tr><td>full-local</td><td>Neo4j in Docker</td><td>Ollama</td><td>no (enforced)</td></tr>
     </table>
     <p id="g-config-live"></p>
+    <h3>Logging and errors</h3>
+    <p>The server logs to the console and to <code>data/logs/app.log</code> at the level set by <code>LOG_LEVEL</code>. Every request has an ID. It appears in the log and at the end of error messages as “(ref …)”, so a problem someone sees in the app can be found under Settings → Logs. Unexpected errors are logged with a full traceback, while the page only shows a short message; browser-side errors are reported to the same log. Secrets are masked in log lines.</p>
+    <h3>Theme</h3>
+    <p>The ◐ / ☀ / ☾ button in the header switches between following the system, light and dark. Graphs and diagrams redraw in the new colours.</p>
     <p>Sign-in uses <code>APP_USERNAME</code> / <code>APP_PASSWORD</code> (admin / admin by default; cloud mode refuses the default). Embedding pacing and caching are set with <code>EMBED_TPM</code> and <code>EMBED_CACHE</code>.</p>
 
-    <h2 id="g-limits">10. Limitations and known gaps</h2>
+    <h2 id="g-limits">13. Limitations and known gaps</h2>
     <ul id="g-limits-list">
       <li>Only content published on GitHub is included. Packs that ship their playbooks only through Content Hub appear through their docs alone, and connectors without a public repo (for example some firewall connectors) have no description or action list.</li>
       <li>Calls to playbooks that aren't loaded show as placeholder nodes ("unresolved:&lt;uuid&gt;").</li>
       <li>Step types and triggers are inferred from arguments, so unusual custom steps may show as a generic "action".</li>
-      <li>Chat needs the language model's quota. On Gemini's free tier, daily request and embedding limits apply.</li>
+      <li>AI chat needs the language model's quota. On Gemini's free tier, daily request and embedding limits apply; the usage meter counts this app's calls only.</li>
+      <li>The reviewer works from the exported JSON, so it can't see run-time behaviour (e.g. whether a step's Jinja ever fails). Its findings are prompts for a human reviewer, not proof.</li>
     </ul>
 
-    <h2 id="g-glossary">11. Glossary</h2>
+    <h2 id="g-glossary">14. Glossary</h2>
     <table>
       <tr><td><b>Playbook</b></td><td>A FortiSOAR workflow: a trigger plus steps.</td></tr>
       <tr><td><b>Collection</b></td><td>A folder of playbooks.</td></tr>
@@ -580,14 +735,107 @@
       <tr><td><b>Placeholder</b></td><td>A node for a called playbook that isn't loaded.</td></tr>
     </table>
 
-    <h2 id="g-commands">12. Commands</h2>
+    <h2 id="g-commands">15. Commands</h2>
 <pre>.venv/bin/python scripts/fetch_fortinet.py --repos-only     # download / re-sync GitHub content
 .venv/bin/python -m app.cli ingest-fortinet [--wipe --yes]  # (re)load it into the graph
 .venv/bin/python -m app.cli status                          # node counts
 .venv/bin/python -m app.cli derive-links                    # rebuild derived links
+.venv/bin/python -m app.cli review-github                   # score every Fortinet playbook (no AI)
+.venv/bin/python -m app.cli sync-sources                    # re-pull Git sources, re-review uploads (no AI)
+.venv/bin/python -m app.cli scheduled-sync --force          # GitHub re-download (+ optional re-ingest, 0 embeddings)
 .venv/bin/python -m app.cli links list | approve | reject | add   # review internal-doc links
 .venv/bin/python -m app.cli serve                           # web UI on :8000</pre>
   </article>
+  </div>
+</section>
+
+<section id="view-github" class="view" hidden>
+  <div id="gh-top">
+    <h1>GitHub content</h1>
+    <div class="muted" id="gh-sub">Every repo downloaded from the GitHub org, what it contains, and how much of it is in the graph and embedded.</div>
+    <div id="gh-cards"></div>
+    <div class="toolbar" style="padding:0 0 10px;border:0;background:none">
+      <input id="gh-search" type="search" placeholder="Search repos, labels, categories…" aria-label="Search repos">
+      <select id="gh-kind" aria-label="Kind"><option value="">All kinds</option><option value="solution_pack">Solution packs</option>
+        <option value="connector">Connectors</option><option value="widget">Widgets</option><option value="ai">AI packs</option></select>
+      <select id="gh-status" aria-label="Status"><option value="">Any status</option><option value="not ingested">Not ingested</option>
+        <option value="partial">Partial</option><option value="complete">Complete</option><option value="empty">No content</option><option value="stale">Needs re-ingest (newer download)</option></select>
+      <label class="muted" style="font-size:12px"><input type="checkbox" id="gh-has-pb"> has playbooks</label>
+      <span class="count" id="gh-count"></span>
+      <button type="button" id="gh-select-visible" title="Select every repo currently listed (up to 300)">Select listed</button>
+      <button type="button" id="gh-refresh" title="Reload counts from the graph">↻</button>
+    </div>
+  </div>
+  <div id="gh-table-wrap"><table class="grid" id="gh-table"></table></div>
+  <div id="gh-job"></div>
+  <aside id="gh-drawer" hidden aria-label="Repo details"></aside>
+  <div id="gh-bar" role="region" aria-label="Selected repos">
+    <b id="gh-selected"></b><span class="muted" id="gh-estimate"></span>
+    <span class="spacer"></span>
+    <label class="muted" style="font-size:12px"><input type="checkbox" id="gh-docs" checked> include docs</label>
+    <label class="muted" style="font-size:12px">max new embeddings <input type="number" id="gh-max" min="0" placeholder="no cap"></label>
+    <button type="button" id="gh-clear">Clear</button>
+    <button type="button" class="primary" id="gh-ingest">Ingest selected</button>
+  </div>
+</section>
+
+<section id="view-review" class="view" hidden></section>
+<section id="view-insights" class="view" hidden></section>
+
+<section id="view-settings" class="view" hidden>
+  <nav id="settings-nav" aria-label="Settings sections"></nav>
+  <div id="settings-body">
+    <div class="settings" id="settings">
+      <h1>Settings</h1>
+      <p class="lead">Configuration is saved to <code>.env</code> and applied immediately, with no restart. Secrets are write-only. Operations run in the background on this server.</p>
+      <div id="settings-config"><div class="muted">Loading…</div></div>
+      <div id="settings-save" role="region" aria-label="Unsaved changes">
+        <span id="settings-dirty"></span><span class="spacer"></span>
+        <button type="button" id="settings-discard">Discard</button>
+        <button type="button" class="primary" id="settings-apply">Save &amp; apply</button>
+      </div>
+
+      <h2 id="s-tests">Connection tests</h2>
+      <p class="lead">Check the current configuration. The model test uses one request of your quota.</p>
+      <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" data-test="neo4j">Test Neo4j</button>
+        <button type="button" data-test="embeddings">Test embeddings</button>
+        <button type="button" data-test="llm">Test answer model</button>
+      </div>
+      <div id="test-result" class="muted" style="margin-top:8px"></div>
+
+      <h2 id="s-ops">Operations</h2>
+      <p class="lead">Data-loading and maintenance tasks. One runs at a time; its log appears below.</p>
+      <div class="ops" id="ops"></div>
+      <div id="job"></div>
+      <h3 style="font-size:13px;color:var(--muted);margin:16px 0 6px">Recent operations</h3>
+      <table id="job-history"></table>
+
+      <h2 id="s-links">Doc ↔ playbook links</h2>
+      <p class="lead">Links between your internal docs and playbooks. Suggestions stay <i>proposed</i> until approved; only approved links are used in answers (unless "Use unreviewed doc links" is on).</p>
+      <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id="links-status"><option value="proposed">Proposed</option><option value="approved">Approved</option><option value="rejected">Rejected</option></select>
+        <span class="spacer" style="flex:1"></span>
+        <label class="muted" style="font-size:12px">Approve all proposed with confidence ≥ <input id="links-min" type="number" min="0" max="1" step="0.05" value="0.9" style="width:70px"></label>
+        <button type="button" id="links-approve-all">Approve all</button>
+      </div>
+      <table id="links-table" style="margin-top:8px"></table>
+
+      <h2 id="s-logs">Logs</h2>
+      <p class="lead">Server log (<code id="log-file">data/logs/app.log</code>). Each error message in the app ends with “ref …”, its request ID: search for it here.</p>
+      <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <select id="log-level"><option value="DEBUG">All levels</option><option value="INFO" selected>Info and above</option>
+          <option value="WARNING">Warnings and errors</option><option value="ERROR">Errors only</option></select>
+        <input id="log-q" type="search" placeholder="Filter (text or request id)…" style="flex:1;min-width:160px;padding:6px 9px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text)">
+        <label class="muted" style="font-size:12px"><input type="checkbox" id="log-auto"> auto-refresh</label>
+        <button type="button" id="log-refresh">Refresh</button>
+      </div>
+      <div class="log-view" id="log-view"><div class="muted">Loading…</div></div>
+
+      <h2 id="s-ui">Interface preferences</h2>
+      <p class="lead">Saved in this browser only.</p>
+      <div id="ui-prefs"></div>
+    </div>
   </div>
 </section>
 
@@ -595,6 +843,7 @@
   <nav id="sidebar" aria-label="Chats">
     <div class="top"><button class="primary" id="btn-new">+ New chat</button></div>
     <ul id="sessions"></ul>
+    <div id="saved-searches" class="saved-searches"></div>
   </nav>
 
   <section id="chat">
@@ -604,7 +853,9 @@
         <textarea id="question" rows="1" placeholder="Ask a question or a follow-up…"></textarea>
         <button class="primary" id="btn-send" type="submit">Send</button>
       </div>
-      <div class="hint">Enter to send · Shift+Enter for a new line</div>
+      <div class="hint"><label class="mode" title="Keyword search + graph expansion only. No Gemini / LLM calls, no written answer."><input type="checkbox" id="graph-only"> Graph only (no AI)</label>
+        <span class="mode-note" id="mode-note"></span><span>Enter to send · Shift+Enter for a new line</span></div>
+      <div class="filters" id="chat-filters" hidden></div>
       <div class="error" id="composer-error"></div>
     </form>
   </section>
@@ -617,6 +868,7 @@
       <button id="btn-fit">Fit</button>
       <button id="btn-clear">Clear</button>
       <button id="btn-expand" title="Enlarge the graph to fill the window (Esc to restore)" aria-pressed="false">⤢ Expand</button>
+      <button id="btn-graph-png" title="Download the graph as a PNG image">⤓ PNG</button>
     </div>
     <div id="player" hidden>
       <div class="controls">
@@ -648,6 +900,8 @@
   <div class="head">
     <strong id="viewer-title"></strong>
     <button id="viewer-size" title="Switch between fit-to-window and actual size">Actual size</button>
+    <button id="viewer-svg" title="Download this diagram as SVG">⤓ SVG</button>
+    <button id="viewer-png" title="Download this diagram as PNG">⤓ PNG</button>
     <button id="viewer-close" title="Close (Esc)">✕ Close</button>
   </div>
   <div class="body" id="viewer-body"></div>
@@ -661,21 +915,81 @@
 const $ = id => document.getElementById(id);
 const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+/* ---- theme: system | light | dark (the <head> script already applied a stored choice before paint) */
+const systemDark = matchMedia("(prefers-color-scheme: dark)");
+const THEME_ICONS = { system: "◐", light: "☀", dark: "☾" };
 const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
   set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
 };
-mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "default",
-                     flowchart: { htmlLabels: true, curve: "basis" }, sequence: { mirrorActors: false, useMaxWidth: false } });
+let themeChoice = ["light", "dark"].includes(store.get("graphrag.theme")) ? store.get("graphrag.theme") : "system";
+const isDark = () => themeChoice === "dark" || (themeChoice === "system" && systemDark.matches);
+const MERMAID_BASE = { startOnLoad: false, securityLevel: "strict", flowchart: { htmlLabels: true, curve: "basis" },
+                       sequence: { mirrorActors: false, useMaxWidth: false } };
+mermaid.initialize({ ...MERMAID_BASE, theme: isDark() ? "dark" : "default" });
+
+/* Every diagram is drawn through drawMermaid so it can be redrawn when the theme changes. */
+async function drawMermaid(el, code) {
+  el.dataset.mmd = code;
+  el.innerHTML = (await mermaid.render(`mmd-${++diagramSeq}`, code)).svg;
+}
+async function redrawDiagrams() {
+  for (const el of document.querySelectorAll("[data-mmd]")) {
+    try { await drawMermaid(el, el.dataset.mmd); } catch { /* keep the old drawing */ }
+  }
+}
+function applyTheme(choice, persist = true) {
+  themeChoice = choice;
+  if (choice === "system") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = choice;
+  if (persist) store.set("graphrag.theme", choice);
+  updateThemeButton();
+  mermaid.initialize({ ...MERMAID_BASE, theme: isDark() ? "dark" : "default" });
+  graphs.forEach(g => g.style(graphStyle()));  // graph colours are read from CSS variables
+  redrawDiagrams();
+}
+function updateThemeButton() {
+  const b = $("btn-theme");
+  b.textContent = THEME_ICONS[themeChoice];
+  b.title = `Theme: ${themeChoice}${themeChoice === "system" ? ` (${isDark() ? "dark" : "light"})` : ""}. Click to switch.`;
+}
+systemDark.addEventListener("change", () => { if (themeChoice === "system") applyTheme("system", false); });
+
+/* ---- client-side errors: reported to the server log and shown to the user */
+function notify(message, error = false) {
+  const t = document.createElement("div");
+  t.className = `toast${error ? " err" : ""}`; t.setAttribute("role", error ? "alert" : "status");
+  t.textContent = message; document.body.appendChild(t);
+  setTimeout(() => t.remove(), error ? 7000 : 3500);
+}
+let clientErrorsSent = 0;
+function reportClientError(message, source = "", stack = "") {
+  if (clientErrorsSent++ > 20) return;  // don't flood the server from a broken loop
+  fetch("/client-errors", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: String(message).slice(0, 500), source: String(source).slice(0, 200),
+                           stack: String(stack || "").slice(0, 2000), page: location.hash }) }).catch(() => {});
+}
+window.addEventListener("error", e => {
+  if (!e.message) return;  // resource load errors
+  reportClientError(e.message, `${e.filename || ""}:${e.lineno || ""}`, e.error?.stack);
+  notify(`Something went wrong on this page: ${e.message}`, true);
+});
+window.addEventListener("unhandledrejection", e => {
+  const reason = e.reason;
+  if (reason?.message === "Signed out") return;
+  reportClientError(reason?.message || String(reason), "unhandled promise", reason?.stack);
+  notify(`Unexpected error: ${reason?.message || reason}`, true);
+});
 
 function toLogin() { location.href = "/login"; }
 async function api(path, options) {
   const res = await fetch(path, options);
   if (res.status === 401) { toLogin(); throw new Error("Signed out"); }
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(body.detail || `${res.status} ${res.statusText}`);
+  if (!res.ok) {
+    const ref = body.request_id || res.headers.get("x-request-id");
+    throw new Error((body.detail || `${res.status} ${res.statusText}`) + (res.status >= 500 && ref ? ` (ref ${ref})` : ""));
+  }
   return body;
 }
 const post = (path, data, method = "POST") =>
@@ -1128,6 +1442,8 @@ function openViewer(title, svg) {
   $("viewer-title").textContent = title;
   $("viewer-body").className = "body";
   $("viewer-body").innerHTML = svg.outerHTML;
+  const source = svg.closest("[data-mmd]")?.dataset.mmd;
+  if (source) $("viewer-body").dataset.mmd = source; else delete $("viewer-body").dataset.mmd;
   $("viewer-size").textContent = "Actual size";
   $("diagram-viewer").hidden = false;
   $("viewer-close").focus();
@@ -1182,9 +1498,8 @@ function diagramCard(playbooks, { autoload = true } = {}) {
     canvas.innerHTML = `<span class="muted">Loading diagram…</span>`;
     try {
       const d = await api(`/playbooks/${encodeURIComponent(pick())}/diagram?kind=${kind}`);
-      const { svg } = await mermaid.render(`mmd-${++diagramSeq}`, d.mermaid);
       canvas.dataset.kind = kind;
-      canvas.innerHTML = svg;
+      await drawMermaid(canvas, d.mermaid);
     } catch (err) { canvas.innerHTML = `<span class="error">Diagram failed: ${esc(err.message)}</span>`; }
   };
   card.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
@@ -1362,7 +1677,9 @@ async function send() {
 
 async function stream(card, question) {
   const res = await fetch(`/chats/${currentId}/messages`, {
-    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ question }),
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question, mode: $("graph-only").checked ? "graph" : "ai",
+                           filters: $("graph-only").checked && window.chatFilters ? window.chatFilters() : {} }),
   });
   if (res.status === 401) { toLogin(); return; }
   if (!res.ok || !res.body) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
@@ -1719,6 +2036,7 @@ async function showCatalogDetail(kind, id) {
     else panel.innerHTML = documentDetail(await api(`/documents?id=${enc(id)}`));
   } catch (err) { panel.innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
   wireDetail(kind, id);
+  window.afterCatalogDetail?.(kind, id, panel);
   panel.scrollTop = 0;
   if (matchMedia("(max-width: 900px)").matches) panel.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
 }
@@ -1841,8 +2159,8 @@ function wireDetail(kind, id) {
     slot.innerHTML = `<div class="muted">Loading diagram…</div>`;
     try {
       const d = await api(`/playbooks/${enc(id)}/diagram?kind=${b.dataset.kind}`);
-      const { svg } = await mermaid.render(`mmd-${++diagramSeq}`, d.mermaid);
-      slot.innerHTML = `<div class="canvas">${svg}</div>`;
+      slot.innerHTML = `<div class="canvas"></div>`;
+      await drawMermaid(slot.firstElementChild, d.mermaid);
     } catch (err) { slot.innerHTML = `<div class="error">Diagram failed: ${esc(err.message)}</div>`; }
   }));
 }
@@ -1956,9 +2274,410 @@ async function renderGuide() {
     G --> E["Embeddings and indexes<br/>vector + full-text"] --> G
     G --> UI["Home · Catalog · Chat · Guide"]`;
   for (const [id, code] of [["g-model-diagram", model], ["g-pipeline", pipeline]]) {
-    try { $(id).innerHTML = (await mermaid.render(`mmd-${++diagramSeq}`, code)).svg; }
+    try { await drawMermaid($(id), code); }
     catch (err) { $(id).innerHTML = `<span class="error">Diagram failed: ${esc(err.message)}</span>`; }
   }
+}
+
+/* graph-only chat mode (no model API calls), remembered per browser */
+function applyChatMode() {
+  const on = $("graph-only").checked;
+  $("composer").classList.toggle("graph-only", on);
+  $("mode-note").textContent = on ? "keyword search + graph · 0 API calls" : "";
+  $("question").placeholder = on ? "Search the graph by keywords (e.g. phishing virustotal block ip)…" : "Ask a question or a follow-up…";
+}
+$("graph-only").checked = store.get("graphrag.graphOnly") === "1";
+$("graph-only").addEventListener("change", () => { store.set("graphrag.graphOnly", $("graph-only").checked ? "1" : "0"); applyChatMode(); });
+applyChatMode();
+
+/* ================================================================ github page */
+let ghData = null, ghPicked = new Set();
+const ghCols = [
+  ["select", ""], ["label", "Repo"], ["kind", "Kind"], ["version", "Version / branch"], ["playbooks", "Playbooks (in graph · embedded)"],
+  ["docs", "Docs (chunks embedded)"], ["pending_embeddings", "Pending embeddings"], ["status", "Status"],
+  ["last_ingested", "Last ingested"], ["actions", "Actions"],
+];
+const fmtWhen = iso => {
+  if (!iso) return "";
+  const d = new Date(iso); if (isNaN(d)) return iso;
+  return `${d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" })} ${d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`;
+};
+const agoIso = iso => iso ? `${ago(Date.parse(iso) / 1000)} ago` : "";
+let ghSort = { key: "pending_embeddings", dir: -1 };
+
+async function loadGithub(force = false) {
+  if (ghData && !force) { renderGithub(); return; }
+  $("gh-table").innerHTML = `<tbody><tr><td class="muted">Reading the downloaded repos and the graph…</td></tr></tbody>`;
+  try { ghData = await api("/github/repos"); }
+  catch (err) { $("gh-table").innerHTML = `<tbody><tr><td class="error">${esc(err.message)}</td></tr></tbody>`; return; }
+  renderGithub();
+}
+
+function renderGithub() {
+  const t = ghData.totals, pct = (a, b) => b ? Math.round(100 * a / b) : 0;
+  const card = (label, value, sub, ratio) => `<div class="card"><b>${value}</b><span>${label}${sub ? ` · ${sub}` : ""}</span>${ratio != null ? `<div class="meter"><span style="width:${ratio}%"></span></div>` : ""}</div>`;
+  $("gh-cards").innerHTML =
+    card("repos downloaded", num(t.repos)) +
+    card("playbooks embedded", `${num(t.playbooks_embedded)} / ${num(t.playbooks)}`, `${pct(t.playbooks_embedded, t.playbooks)}%`, pct(t.playbooks_embedded, t.playbooks)) +
+    card("doc chunks embedded", `${num(t.chunks_embedded)} / ${num(t.chunks)}`, `${pct(t.chunks_embedded, t.chunks)}%`, pct(t.chunks_embedded, t.chunks)) +
+    card("embeddings pending", num(t.pending_embeddings), `≈ ${Math.ceil(t.pending_embeddings / 1000)} days on Gemini free tier`);
+  const q = $("gh-search").value.trim().toLowerCase(), kind = $("gh-kind").value, status = $("gh-status").value, hasPb = $("gh-has-pb").checked;
+  let rows = ghData.repos.filter(r => (!kind || r.kind === kind) && (!status || (status === "stale" ? r.stale : r.status === status)) && (!hasPb || r.playbooks)
+    && (!q || [r.repo, r.label, r.category, r.description, r.publisher].join(" ").toLowerCase().includes(q)));
+  const val = r => ghSort.key === "playbooks" ? r.playbooks : ghSort.key === "docs" ? r.chunks : r[ghSort.key] ?? "";
+  rows.sort((a, b) => { const x = val(a), y = val(b); return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * ghSort.dir; });
+  const total = rows.length;
+  rows = rows.slice(0, ROW_CAP);
+  $("gh-count").textContent = total > ROW_CAP ? `showing ${ROW_CAP} of ${total}` : `${total} repos`;
+  $("gh-table").innerHTML = `<thead><tr>${ghCols.map(([k, l]) => `<th data-key="${k}" aria-sort="${ghSort.key === k ? (ghSort.dir > 0 ? "ascending" : "descending") : "none"}">${l}</th>`).join("")}</tr></thead>
+    <tbody>${rows.map(r => {
+      const picked = ghPicked.has(r.repo), canIngest = r.playbooks + r.docs > 0;
+      return `<tr class="${picked ? "picked" : ""}" data-repo="${esc(r.repo)}">
+        <td><button type="button" class="pick" aria-pressed="${picked}" ${canIngest ? "" : "disabled title='Nothing to ingest'"}>${picked ? "✓ Selected" : "Select"}</button></td>
+        <td><b>${esc(r.label)}</b><span class="sub"><a href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${esc(r.repo)} ↗</a>${r.category ? ` · ${esc(r.category)}` : ""}</span></td>
+        <td><span class="pill">${esc(r.kind.replace("_", " "))}</span></td>
+        <td>${esc(r.version || "–")}<span class="sub">${esc(r.branch || "")}</span></td>
+        <td class="num">${r.playbooks ? `${r.playbooks}<span class="sub">${r.playbooks_loaded} in graph · ${r.playbooks_embedded} embedded</span>` : `<span class="sub">–</span>`}</td>
+        <td class="num">${r.docs ? `${r.docs} docs<span class="sub">${r.chunks_embedded} / ${r.chunks} chunks</span>` : `<span class="sub">–</span>`}</td>
+        <td class="num">${r.pending_embeddings || "–"}</td>
+        <td><span class="status-tag ${r.status === "complete" ? "complete" : r.status === "partial" ? "partial" : r.status === "empty" ? "empty" : ""}">${esc(r.status)}</span>
+          ${r.stale ? `<span class="status-tag stale" title="Downloaded ${esc(fmtWhen(r.fetched))}, after the last ingest">newer download</span>` : ""}</td>
+        <td>${r.last_ingested ? `<span title="${esc(r.last_ingested)}">${esc(agoIso(r.last_ingested))}</span><span class="sub">${esc(r.last_mode || "ingest")}${r.last_cap != null ? ` · cap ${r.last_cap}` : ""}</span>` : `<span class="sub">never</span>`}</td>
+        <td><div class="acts">${ghActions(r)}</div></td></tr>`;
+    }).join("") || `<tr><td colspan="${ghCols.length}" class="muted">No repos match.</td></tr>`}</tbody>`;
+  $("gh-table").querySelectorAll("th").forEach(th => th.onclick = () => {
+    if (th.dataset.key === "select" || th.dataset.key === "actions") return;
+    ghSort = { key: th.dataset.key, dir: ghSort.key === th.dataset.key ? -ghSort.dir : -1 }; renderGithub();
+  });
+  $("gh-table").querySelectorAll(".pick").forEach(b => b.onclick = e => {
+    e.stopPropagation();
+    const repo = b.closest("tr").dataset.repo;
+    ghPicked.has(repo) ? ghPicked.delete(repo) : ghPicked.add(repo);
+    renderGithub();
+  });
+  bindGhActions($("gh-table"));
+  $("gh-table").querySelectorAll("tbody tr[data-repo]").forEach(tr => tr.onclick = e => {
+    if (e.target.closest("a, button")) return;
+    openGhDrawer(tr.dataset.repo);
+  });
+  updateGhBar();
+}
+
+function updateGhBar() {
+  const picked = ghData.repos.filter(r => ghPicked.has(r.repo));
+  const pb = picked.reduce((a, r) => a + (r.playbooks - r.playbooks_embedded), 0);
+  const ch = $("gh-docs").checked ? picked.reduce((a, r) => a + (r.chunks - r.chunks_embedded), 0) : 0;
+  $("gh-bar").classList.toggle("show", picked.length > 0);
+  $("gh-selected").textContent = `${picked.length} repo${picked.length === 1 ? "" : "s"} selected`;
+  const cap = $("gh-max").value;
+  $("gh-estimate").textContent = `up to ${num(pb + ch)} new embeddings (${num(pb)} playbooks + ${num(ch)} doc chunks)` +
+    (cap !== "" ? `; capped at ${num(+cap)}, the rest stored as pending` : "");
+}
+["gh-search", "gh-kind", "gh-status", "gh-has-pb"].forEach(id => $(id).addEventListener(id === "gh-search" ? "input" : "change", () => ghData && renderGithub()));
+["gh-docs", "gh-max"].forEach(id => $(id).addEventListener("input", updateGhBar));
+$("gh-refresh").onclick = () => loadGithub(true);
+$("gh-clear").onclick = () => { ghPicked.clear(); renderGithub(); };
+$("gh-select-visible").onclick = () => {
+  $("gh-table").querySelectorAll("tr[data-repo] .pick:not([disabled])").forEach(b => ghPicked.add(b.closest("tr").dataset.repo));
+  renderGithub();
+};
+$("gh-ingest").onclick = async () => {
+  const repos = [...ghPicked], cap = $("gh-max").value;
+  if (!confirm(`Ingest ${repos.length} repo(s)? ${$("gh-estimate").textContent}.`)) return;
+  try {
+    const job = await post("/admin/jobs", { operation: "ingest_repos",
+      options: { repos, skip_docs: !$("gh-docs").checked, max_embeddings: cap === "" ? null : +cap } });
+    ghPicked.clear(); renderGithub();
+    showJob(job.id, "gh-job", () => loadGithub(true));
+  } catch (err) { notify(err.message, true); }
+};
+
+function ghActions(r) {
+  if (!r.playbooks && !r.docs) return `<span class="sub">–</span>`;
+  const loaded = r.playbooks_loaded || r.docs_loaded;
+  return (loaded ? `<button type="button" data-act="reingest" data-repo="${esc(r.repo)}" title="Reload this repo from the downloaded files and refresh its links">Re-ingest</button>`
+                 : `<button type="button" data-act="ingest" data-repo="${esc(r.repo)}" title="Load this repo into the graph">Ingest</button>`) +
+    (loaded && r.pending_embeddings ? `<button type="button" data-act="continue" data-repo="${esc(r.repo)}" title="Embed only this repo's pending items">Continue</button>` : "");
+}
+
+function bindGhActions(root) {
+  root.querySelectorAll("button[data-act]").forEach(b => b.onclick = e => { e.stopPropagation(); runGhAction(b.dataset.act, b.dataset.repo); });
+}
+
+async function runGhAction(act, repo) {
+  const r = ghData.repos.find(x => x.repo === repo);
+  if (!r) return;
+  let pending = r.pending_embeddings;
+  if (act === "ingest") pending = r.playbooks + r.chunks;
+  const what = { ingest: "Ingest", reingest: "Re-ingest", continue: "Continue embedding" }[act];
+  const explain = act === "continue"
+    ? `Embeds only the pending items of ${repo} (${r.playbooks_pending} playbooks + ${r.chunks_pending} doc chunks). Nothing else is rewritten.`
+    : act === "reingest"
+      ? `Reloads ${repo} from the downloaded files and refreshes its links. Already-embedded text comes from the local cache at no cost; only new or changed text needs new embeddings (at most ${pending}).`
+      : `Loads ${repo} into the graph: ${r.playbooks} playbooks, ${r.docs} docs (${r.chunks} chunks).`;
+  const def = act === "reingest" ? 0 : Math.min(pending, 100);
+  const answer = prompt(`${what}: ${explain}\n\nEach new embedding is one Gemini API call against the free-tier daily quota (≈1,000/day).\nMax NEW embeddings for this run (0 = none, everything else stays pending):`, String(def));
+  if (answer === null) return;
+  const cap = answer.trim();
+  if (!/^\d+$/.test(cap)) { notify("Enter a whole number for the embedding cap.", true); return; }
+  const body = act === "continue"
+    ? { operation: "continue_repos", options: { repos: [repo], max_embeddings: +cap } }
+    : { operation: "ingest_repos", options: { repos: [repo], mode: act === "reingest" ? "reingest" : "ingest", max_embeddings: +cap } };
+  try {
+    const job = await post("/admin/jobs", body);
+    $("gh-drawer").hidden = true;
+    showJob(job.id, "gh-job", () => loadGithub(true));
+    notify(`${what} started for ${repo} (cap ${cap} new embeddings).`);
+  } catch (err) { notify(err.message, true); }
+}
+
+async function openGhDrawer(repo) {
+  const el = $("gh-drawer");
+  el.hidden = false;
+  el.innerHTML = `<button type="button" class="close" aria-label="Close">✕</button><p class="muted">Loading ${esc(repo)}…</p>`;
+  el.querySelector(".close").onclick = () => { el.hidden = true; };
+  let d;
+  try { d = await api(`/github/repos/${encodeURIComponent(repo)}`); }
+  catch (err) { el.innerHTML += `<p class="error">${esc(err.message)}</p>`; return; }
+  const list = (items, empty = "none") => items.length ? `<ul>${items.map(x => `<li>${x}</li>`).join("")}</ul>` : `<p class="muted">${empty}</p>`;
+  const catalogLink = d.kind === "connector" ? "" : `<a href="#browse/packs/${encodeURIComponent(d.repo)}">Open in catalog</a>`;
+  el.innerHTML = `<button type="button" class="close" aria-label="Close">✕</button>
+    <h2>${esc(d.label)}</h2>
+    <div class="muted"><a href="${esc(d.url)}" target="_blank" rel="noopener noreferrer">${esc(d.repo)} ↗</a> ${catalogLink ? "· " + catalogLink : ""}</div>
+    ${d.description ? `<p style="font-size:13px">${esc(d.description)}</p>` : ""}
+    <div class="acts">${ghActions(d)}</div>
+    ${d.stale ? `<p class="note" style="color:var(--danger)">The downloaded copy (${esc(fmtWhen(d.fetched))}) is newer than the last ingest. Re-ingest to update the graph.</p>` : ""}
+    <h3>GitHub</h3>
+    <dl><dt>Kind</dt><dd>${esc(d.kind.replace("_", " "))}</dd>
+      <dt>Version</dt><dd>${esc(d.version || "–")}</dd>
+      <dt>Category</dt><dd>${esc(d.category || "–")}</dd>
+      <dt>Publisher</dt><dd>${esc(d.publisher || "–")}</dd>
+      <dt>Branch</dt><dd>${esc(d.branch || "–")}</dd>
+      <dt>Last push</dt><dd>${d.pushed ? `${esc(fmtWhen(d.pushed))} <span class="muted">(${esc(agoIso(d.pushed))})</span>` : "–"}</dd>
+      <dt>Downloaded</dt><dd>${d.fetched ? `${esc(fmtWhen(d.fetched))} <span class="muted">(${esc(agoIso(d.fetched))})</span>` : "–"}</dd>
+      ${d.archived ? `<dt>Archived</dt><dd>yes</dd>` : ""}</dl>
+    <h3>In the graph</h3>
+    <dl><dt>Status</dt><dd>${esc(d.status)}</dd>
+      <dt>Last ingested</dt><dd>${d.last_ingested ? `${esc(fmtWhen(d.last_ingested))} <span class="muted">(${esc(agoIso(d.last_ingested))})</span>` : "never"}</dd>
+      <dt>Last run</dt><dd>${d.last_mode ? `${esc(d.last_mode)}${d.last_cap != null ? `, cap ${d.last_cap} new embeddings` : ", no cap"}` : (d.last_ingested ? "before history was recorded" : "–")}</dd>
+      <dt>Playbooks</dt><dd>${d.playbooks} · ${d.playbooks_loaded} in graph · ${d.playbooks_embedded} embedded</dd>
+      <dt>Collections</dt><dd>${d.collections}</dd>
+      <dt>Docs</dt><dd>${d.docs} · ${d.docs_loaded} in graph · ${d.chunks_embedded} / ${d.chunks} chunks embedded</dd>
+      <dt>Connectors used</dt><dd>${d.connector_count}</dd>
+      <dt>Pending</dt><dd><b>${d.pending_embeddings}</b> embeddings (${d.playbooks_pending} playbooks + ${d.chunks_pending} chunks)</dd></dl>
+    <h3>Ingest history</h3>
+    ${list(d.history.map(h => `${esc(fmtWhen(h.at))} · ${esc(h.mode)}${h.cap != null ? ` · cap ${h.cap}` : ""}${h.embedded != null ? ` · ${h.embedded} embedded` : ""}${h.embedded_skipped ? ` · ${h.embedded_skipped} left pending` : ""}`
+      + (h.diff && !h.diff.first_load && Object.values(h.diff.counts).some(Boolean)
+         ? ` · playbooks <span title="${esc(["added", "removed", "changed"].map(k => h.diff[k].length ? `${k}: ${h.diff[k].join(", ")}` : "").filter(Boolean).join(" | "))}">+${h.diff.counts.added} −${h.diff.counts.removed} ~${h.diff.counts.changed}</span>` : "")),
+           d.last_ingested ? "Ingested before history was recorded." : "Never ingested.")}
+    <h3>Playbooks (${d.playbook_list.length})</h3>
+    ${list(d.playbook_list.map(p => `${esc(p.name)} <span class="muted">${p.embedded ? "· embedded" : p.loaded ? "· in graph, not embedded" : "· not loaded"}</span>`))}
+    <h3>Collections</h3>${list(d.collection_names.map(esc))}
+    <h3>Connectors used</h3>${list(d.connectors.map(esc))}
+    <h3>Docs</h3>${list(d.doc_titles.map(esc))}`;
+  el.querySelector(".close").onclick = () => { el.hidden = true; };
+  bindGhActions(el);
+}
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("gh-drawer").hidden) $("gh-drawer").hidden = true; });
+
+/* ================================================================ settings */
+let settingsFields = [], settingsDirty = {}, jobTimer = null;
+const toast = notify;
+
+async function renderSettings() {
+  const nav = $("settings-nav");
+  if (!nav.children.length) {
+    const groups = ["General", "AI models", "Database", "Security", "Retrieval & chat", "Data sources"];
+    nav.innerHTML = `<h2>Configuration</h2>${groups.map(g => `<button type="button" data-target="sg-${g.replace(/\W+/g, "-")}">${g}</button>`).join("")}
+      <h2>Control</h2><button type="button" data-target="s-tests">Connection tests</button><button type="button" data-target="s-ops">Operations</button>
+      <button type="button" data-target="s-links">Doc ↔ playbook links</button><button type="button" data-target="s-logs">Logs</button>
+      <button type="button" data-target="s-ui">Interface preferences</button>`;
+    nav.querySelectorAll("button").forEach(b => b.onclick = () => document.getElementById(b.dataset.target)?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" }));
+  }
+  await Promise.all([loadSettings(), loadOperations(), loadLinks(), loadLogs()]);
+  renderUiPrefs();
+}
+
+async function loadSettings() {
+  const data = await api("/admin/settings");
+  settingsFields = data.fields; settingsDirty = {};
+  const groups = [...new Set(settingsFields.map(f => f.group))];
+  $("settings-config").innerHTML = groups.map(g => `<h2 id="sg-${g.replace(/\W+/g, "-")}">${esc(g)}</h2>` + settingsFields.filter(f => f.group === g).map(fieldHtml).join("")).join("");
+  $("settings-config").querySelectorAll("[data-key]").forEach(el => {
+    const handler = () => {
+      const f = settingsFields.find(x => x.key === el.dataset.key);
+      const value = el.type === "checkbox" ? String(el.checked) : el.value;
+      const original = f.type === "secret" ? "" : f.type === "bool" ? String((f.value || "false").toLowerCase() === "true") : (f.value ?? "");
+      if (value !== original) settingsDirty[f.key] = value; else delete settingsDirty[f.key];
+      el.closest(".field").classList.toggle("dirty", f.key in settingsDirty);
+      updateSaveBar();
+    };
+    el.addEventListener("input", handler); el.addEventListener("change", handler);
+  });
+  updateSaveBar();
+}
+
+function fieldHtml(f) {
+  const id = `set-${f.key}`;
+  let control;
+  if (f.type === "select") control = `<select id="${id}" data-key="${f.key}">${f.options.map(o => `<option value="${esc(o)}" ${o === (f.value ?? "") ? "selected" : ""}>${esc(o || (f.key === "LOG_LEVEL" ? "(default: INFO)" : "(default)"))}</option>`).join("")}</select>`;
+  else if (f.type === "bool") control = `<label class="switch"><input id="${id}" data-key="${f.key}" type="checkbox" ${(f.value || "").toLowerCase() === "true" ? "checked" : ""}> enabled</label>`;
+  else if (f.type === "secret") control = `<input id="${id}" data-key="${f.key}" type="password" autocomplete="new-password" placeholder="${f.is_set ? "•••••••• set (type to replace)" : f.key === "APP_PASSWORD" ? "not set: default admin password in use" : "not set"}">`;
+  else control = `<input id="${id}" data-key="${f.key}" type="${f.type === "number" ? "number" : "text"}" value="${esc(f.value ?? "")}" placeholder="${esc(f.effective || "")}">`;
+  const eff = f.type !== "secret" && f.type !== "bool" && !f.value && f.effective ? `<span class="eff">in effect: ${esc(f.effective)}</span>` : "";
+  return `<div class="field ${f.danger ? "danger" : ""}"><label for="${id}">${esc(f.label)}<code>${f.key}</code></label>
+    <div>${control}${eff}</div><div class="help">${esc(f.help || "")}</div></div>`;
+}
+
+function updateSaveBar() {
+  const keys = Object.keys(settingsDirty);
+  $("settings-save").classList.toggle("show", keys.length > 0);
+  $("settings-dirty").textContent = keys.length ? `${keys.length} unsaved change${keys.length > 1 ? "s" : ""}: ${keys.join(", ")}` : "";
+}
+$("settings-discard").onclick = () => loadSettings();
+$("settings-apply").onclick = async () => {
+  const keys = Object.keys(settingsDirty);
+  const danger = keys.filter(k => settingsFields.find(f => f.key === k)?.danger);
+  if (danger.length && !confirm(`${danger.join(", ")} change(s) make stored embeddings incompatible. You'll need to wipe and re-ingest. Continue?`)) return;
+  $("settings-apply").disabled = true;
+  try {
+    const r = await post("/admin/settings", { values: settingsDirty });
+    toast(`Saved and applied: ${r.changed.join(", ") || "nothing changed"}${r.needs_reingest?.length ? ". Wipe and re-ingest needed for the new embeddings." : ""}`);
+    $("mode").textContent = `${r.config.mode} · ${r.config.llm}`;
+    homeLoaded = false; guideRendered = false; Object.keys(catalogData).forEach(k => delete catalogData[k]);
+    await loadSettings();
+  } catch (err) { toast(err.message, true); }
+  finally { $("settings-apply").disabled = false; }
+};
+
+document.querySelectorAll("[data-test]").forEach(b => b.onclick = async () => {
+  $("test-result").className = "muted"; $("test-result").textContent = `Testing ${b.dataset.test}…`;
+  try {
+    const r = await post(`/admin/test/${b.dataset.test}`);
+    $("test-result").className = r.ok ? "" : "error";
+    $("test-result").innerHTML = `${r.ok ? "✅" : "❌"} ${esc(r.detail)} <span class="muted">(${r.ms} ms)</span>`;
+  } catch (err) { $("test-result").className = "error"; $("test-result").textContent = err.message; }
+});
+
+async function loadOperations() {
+  const data = await api("/admin/operations");
+  $("ops").innerHTML = data.operations.map(o => `
+    <div class="op ${o.destructive ? "destructive" : ""}" data-op="${o.name}">
+      <b>${esc(o.title)}</b><p>${esc(o.description)}</p>
+      ${o.name === "ingest" ? `<div class="row"><label><input type="checkbox" data-opt="wipe"> wipe first</label><label><input type="checkbox" data-opt="skip_docs"> skip docs</label></div>` : ""}
+      ${o.name === "link_docs" ? `<div class="row">method <select data-opt="method"><option>auto</option><option>embedding</option><option>llm</option><option>none</option></select></div>` : ""}
+      <div class="row"><button type="button" class="${o.destructive ? "" : "primary"}" data-run="${o.name}">${o.destructive ? "Run…" : "Run"}</button></div>
+    </div>`).join("");
+  $("ops").querySelectorAll("[data-run]").forEach(b => b.onclick = () => runOperation(b.closest(".op")));
+  renderJobHistory(data.jobs);
+  if (data.running) showJob(data.running.id); else if (!jobTimer) $("job").innerHTML = "";
+}
+
+async function runOperation(card) {
+  const name = card.dataset.op, options = {};
+  card.querySelectorAll("[data-opt]").forEach(el => { options[el.dataset.opt] = el.type === "checkbox" ? el.checked : el.value; });
+  const destructive = card.classList.contains("destructive") || options.wipe;
+  let confirmText = "";
+  if (destructive) {
+    confirmText = prompt("This deletes data from the graph (including chats). Type WIPE to continue.") || "";
+    if (confirmText !== "WIPE") { toast("Cancelled: confirmation text didn't match.", true); return; }
+  }
+  try { const job = await post("/admin/jobs", { operation: name, options, confirm: confirmText }); showJob(job.id); }
+  catch (err) { toast(err.message, true); }
+}
+
+function showJob(id, target = "job", onDone = null) {
+  if (jobTimer) clearTimeout(jobTimer);
+  const poll = async () => {
+    let j;
+    try { j = await api(`/admin/jobs/${id}`); } catch { jobTimer = null; return; }
+    const elapsed = Math.round(((j.ended || Date.now() / 1000) - j.started));
+    $(target).innerHTML = `<div class="jobbox"><div class="head"><b>${esc(j.title)}</b>
+        <span class="status-pill ${j.status}">${esc(j.status)}</span><span class="muted">${elapsed}s</span>
+        <span style="flex:1"></span>${j.status === "running" ? `<button type="button" id="job-cancel">Cancel</button>` : ""}</div>
+      <pre id="job-log">${esc(j.log_tail || "(no output yet)")}</pre></div>`;
+    const box = $(target), pre = box.querySelector("pre"); pre.scrollTop = pre.scrollHeight;
+    box.querySelector("#job-cancel")?.addEventListener("click", async () => { await post(`/admin/jobs/${id}/cancel`); });
+    if (j.status === "running" || j.status === "cancelling") jobTimer = setTimeout(poll, 2000);
+    else {
+      jobTimer = null;
+      homeLoaded = false; guideRendered = false; Object.keys(catalogData).forEach(k => delete catalogData[k]);
+      api("/admin/operations").then(d => renderJobHistory(d.jobs)).catch(() => {});
+      if (["derive", "link_docs"].includes(j.name)) loadLinks();
+      ghData = null;
+      onDone?.();
+    }
+  };
+  poll();
+}
+
+function renderJobHistory(jobs) {
+  $("job-history").innerHTML = `<tr><th>Operation</th><th>Status</th><th>Started</th><th>Duration</th><th></th></tr>` +
+    (jobs.map(j => `<tr><td>${esc(j.title)}</td><td><span class="status-pill ${j.status}">${esc(j.status)}</span></td>
+      <td>${new Date(j.started * 1000).toLocaleTimeString()}</td><td>${j.ended ? Math.round(j.ended - j.started) + "s" : "…"}</td>
+      <td><button type="button" data-job="${j.id}">Log</button></td></tr>`).join("") || `<tr><td colspan="5" class="muted">No operations run since the server started.</td></tr>`);
+  $("job-history").querySelectorAll("[data-job]").forEach(b => b.onclick = () => showJob(b.dataset.job));
+}
+
+let logTimer = null;
+async function loadLogs() {
+  const level = $("log-level").value, q = $("log-q").value.trim();
+  try {
+    const r = await api(`/admin/logs?lines=400&level=${level}&q=${encodeURIComponent(q)}`);
+    $("log-file").textContent = r.file.replace(/^.*\/(data\/logs\/)/, "$1");
+    const view = $("log-view"), atBottom = view.scrollTop + view.clientHeight >= view.scrollHeight - 30;
+    view.innerHTML = r.lines.map(l => `<div class="${(l.match(/^\S+ \S+ (\w+)/) || [])[1] || ""}">${esc(l)}</div>`).join("")
+      || `<div class="muted">No matching log lines.</div>`;
+    if (atBottom) view.scrollTop = view.scrollHeight;
+  } catch (err) { $("log-view").innerHTML = `<div class="error">${esc(err.message)}</div>`; }
+}
+$("log-refresh").onclick = loadLogs;
+$("log-level").onchange = loadLogs;
+$("log-q").addEventListener("input", () => { clearTimeout(logTimer); logTimer = setTimeout(loadLogs, 300); });
+setInterval(() => { if ($("log-auto").checked && !$("view-settings").hidden) loadLogs(); }, 3000);
+
+async function loadLinks() {
+  const status = $("links-status").value;
+  const rows = await api(`/admin/links?status=${status}`);
+  $("links-table").innerHTML = `<tr><th>Document</th><th>Playbook</th><th>Method</th><th>Confidence</th><th>Reason</th><th></th></tr>` +
+    (rows.map(r => `<tr><td>${link("documents", r.doc, r.title)}</td><td>${link("playbooks", r.playbook, r.name)}</td><td>${esc(r.method || "")}</td>
+      <td>${r.confidence != null ? (+r.confidence).toFixed(2) : ""}</td><td class="muted">${esc(r.reason || "")}</td>
+      <td style="white-space:nowrap">${status !== "approved" ? `<button type="button" data-link="approve" data-doc="${esc(r.doc)}" data-pb="${esc(r.playbook)}">Approve</button>` : ""}
+          ${status !== "rejected" ? `<button type="button" data-link="reject" data-doc="${esc(r.doc)}" data-pb="${esc(r.playbook)}">Reject</button>` : ""}</td></tr>`).join("")
+     || `<tr><td colspan="6" class="muted">No ${status} links.</td></tr>`);
+  $("links-table").querySelectorAll("[data-link]").forEach(b => b.onclick = async () => {
+    try { const r = await post("/admin/links", { action: b.dataset.link, doc: b.dataset.doc, playbook: b.dataset.pb }); toast(`${r.status} ${r.updated} link(s)`); loadLinks(); }
+    catch (err) { toast(err.message, true); }
+  });
+}
+$("links-status").onchange = loadLinks;
+$("links-approve-all").onclick = async () => {
+  const min = parseFloat($("links-min").value) || 0;
+  if (!confirm(`Approve every proposed link with confidence ≥ ${min}?`)) return;
+  try { const r = await post("/admin/links", { action: "approve", all: true, min_confidence: min }); toast(`approved ${r.updated} link(s)`); loadLinks(); }
+  catch (err) { toast(err.message, true); }
+};
+
+function renderUiPrefs() {
+  $("ui-prefs").innerHTML = `
+    <div class="field"><label for="pref-theme">Theme</label><div><select id="pref-theme">
+      ${[["system", "System (follow the OS)"], ["light", "Light"], ["dark", "Dark"]].map(([v, l]) => `<option value="${v}" ${themeChoice === v ? "selected" : ""}>${l}</option>`).join("")}
+      </select></div></div>
+    <div class="field"><label for="pref-home">Default Home view</label><div><select id="pref-home">
+      ${[["auto", "Automatic (ecosystem above the limit)"], ["ecosystem", "Ecosystem"], ["alerts", "Alerts → Playbooks"], ["incidents", "Incidents → Playbooks"], ["playbooks", "All playbooks"]]
+        .map(([v, l]) => `<option value="${v}" ${homeChoice === v ? "selected" : ""}>${l}</option>`).join("")}</select></div></div>
+    <div class="field"><label for="pref-speed">Animation speed</label><div><input id="pref-speed" type="range" min="0.25" max="10" step="0.25" value="${speed}"> <output id="pref-speed-out">${speed}×</output></div></div>
+    <div class="field"><label for="pref-mode">Playback mode</label><div><select id="pref-mode">
+      <option value="auto" ${player.mode === "auto" ? "selected" : ""}>Auto</option><option value="manual" ${player.mode === "manual" ? "selected" : ""}>Manual</option></select></div></div>
+    <div class="field"><label>Hidden node types</label><div>${hiddenTypes.size ? [...hiddenTypes].map(t => `<span class="pill">${esc(LABELS[t] || t)}</span>`).join("") : `<span class="muted">none</span>`}
+      <button type="button" id="pref-show-all" ${hiddenTypes.size ? "" : "disabled"}>Show all types</button></div></div>
+    <div class="field"><label>Remembered chat</label><div><button type="button" id="pref-forget-chat">Start fresh next time</button></div></div>`;
+  $("pref-theme").onchange = e => applyTheme(e.target.value);
+  $("pref-home").onchange = e => { homeChoice = e.target.value; store.set("graphrag.homeMode", homeChoice); homeLoaded = false; toast("Default Home view saved"); };
+  $("pref-speed").oninput = e => { speed = parseFloat(e.target.value); store.set("graphrag.speed", String(speed)); $("speed").value = speed; showSpeed(); $("pref-speed-out").textContent = `${speed}×`; };
+  $("pref-mode").onchange = e => { player.mode = e.target.value; store.set("graphrag.mode", player.mode); toast("Playback mode saved"); };
+  $("pref-show-all").onclick = () => { hiddenTypes.clear(); store.set("graphrag.hidden", "[]"); applyFilter(); renderLegend(); renderUiPrefs(); };
+  $("pref-forget-chat").onclick = () => { store.set("graphrag.chat", null); currentId = null; toast("The next visit to Chat starts a new conversation"); };
 }
 
 /* ================================================================ router + boot */
@@ -1972,18 +2691,19 @@ async function bootChat() {
 }
 function parseHash() {
   const [view, kind, ...rest] = location.hash.replace(/^#/, "").split("/");
-  return { view: ["home", "browse", "chat", "guide"].includes(view) ? view : "home", kind, id: rest.length ? decodeURIComponent(rest.join("/")) : null };
+  const views = ["home", "browse", "chat", "guide", "settings", "github", "review", "insights", "search"];
+  return { view: views.includes(view) ? view : "home", kind: kind ? decodeURIComponent(kind) : kind, id: rest.length ? decodeURIComponent(rest.join("/")) : null };
 }
 async function route() {
   const r = parseHash();
+  if (r.view === "search") { window.runSharedSearch?.(r.kind || "", r.id); return; }  // #search/<query>/<filters>
+  if (r.view === "chat" && r.kind && window.openSharedChat) { await showView("chat"); window.openSharedChat(r.kind); return; }
   await showView(r.view);
   if (r.view === "browse") await openCatalog(r.kind, r.id);
+  if (window.VIEWS?.[r.view]) await window.VIEWS[r.view].show(r);
 }
 async function showView(name) {
-  $("view-home").hidden = name !== "home";
-  $("view-browse").hidden = name !== "browse";
-  $("view-guide").hidden = name !== "guide";
-  $("view-chat").hidden = name !== "chat";
+  document.querySelectorAll(".view").forEach(v => { v.hidden = v.id !== `view-${name}`; });
   document.querySelectorAll(".nav a").forEach(a => a.setAttribute("aria-current", a.dataset.view === name ? "page" : "false"));
   if (name === "home") {
     stopPlay();
@@ -2000,18 +2720,38 @@ async function showView(name) {
   } else if (name === "guide") {
     stopPlay();
     renderGuide();
+  } else if (name === "github") {
+    stopPlay();
+    loadGithub().then(async () => {  // resume showing a running ingest started from this page
+      const ops = await api("/admin/operations").catch(() => null);
+      if (["ingest_repos", "continue_repos"].includes(ops?.running?.name)) showJob(ops.running.id, "gh-job", () => loadGithub(true));
+    });
+  } else if (name === "settings") {
+    stopPlay();
+    renderSettings().then(() => window.afterSettings?.()).catch(err => toast(err.message, true));
+  } else if (name === "review" || name === "insights") {
+    stopPlay();
   } else {
     requestAnimationFrame(() => cy.resize());
     if (!chatBooted) await bootChat();
   }
 }
 window.addEventListener("hashchange", route);
+updateThemeButton();
+$("btn-theme").onclick = () => {
+  const next = { system: "light", light: "dark", dark: "system" }[themeChoice];
+  applyTheme(next);
+  notify(`Theme: ${next}${next === "system" ? " (follows your OS)" : ""}`);
+};
 $("btn-logout").onclick = async () => { await fetch("/auth/logout", { method: "POST" }).catch(() => {}); toLogin(); };
 
 (async () => {
   try {
     const me = await api("/auth/me");
-    $("user").textContent = me.user ? `Signed in as ${me.user}` : "";
+    window.ME = me;
+    document.body.dataset.role = me.role || "viewer";
+    $("user").textContent = me.user ? `Signed in as ${me.user}${me.role && me.role !== "admin" ? ` (${me.role})` : ""}` : "";
+    window.initPlatform?.(me);
     $("pw-notice").hidden = !me.default_password;
     health = await api("/health");
     $("mode").textContent = `${health.config.mode} · ${health.config.llm}`;
@@ -2025,5 +2765,8 @@ $("btn-logout").onclick = async () => { await fetch("/auth/logout", { method: "P
   route();
 })();
 </script>
+<script src="/static/js/platform.js"></script>
+<script src="/static/js/review.js"></script>
+<script src="/static/js/insights.js"></script>
 </body>
 </html>

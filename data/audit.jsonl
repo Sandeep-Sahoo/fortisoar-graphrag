@@ -1,0 +1,14 @@
+{"at": "2026-10-12T06:58:59+00:00", "user": "admin", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T06:59:22+00:00", "user": "admin", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T06:59:27+00:00", "user": "admin", "action": "source.upload", "target": "64fec859", "details": {"name": "Test upload", "files": 1, "playbooks": 2}}
+{"at": "2026-10-12T07:00:31+00:00", "user": "admin", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T07:00:33+00:00", "user": "admin", "action": "export.playbook", "target": "8fdcdcb0-0511-401a-9485-3b61ccfc8cc4", "details": {"format": "md"}}
+{"at": "2026-10-12T07:00:33+00:00", "user": "admin", "action": "export.playbook", "target": "8fdcdcb0-0511-401a-9485-3b61ccfc8cc4", "details": {"format": "html"}}
+{"at": "2026-10-12T07:01:01+00:00", "user": "admin", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T07:01:56+00:00", "user": "admin", "action": "chat.graph", "target": "2ae9fdfe-e136-40f8-9cba-e77bea0619e3", "details": {"chars": 16}}
+{"at": "2026-10-12T07:03:30+00:00", "user": "admin", "action": "export.playbook", "target": "8fdcdcb0-0511-401a-9485-3b61ccfc8cc4", "details": {"format": "html"}}
+{"at": "2026-10-12T07:04:50+00:00", "user": "admin", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T07:04:51+00:00", "user": "admin", "action": "source.delete", "target": "64fec859"}
+{"at": "2026-10-12T07:06:02+00:00", "user": "admin", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T07:07:54+00:00", "user": "admin", "action": "rule.update", "target": "GOV-01", "details": {"enabled": false}}
+{"at": "2026-10-12T07:07:55+00:00", "user": "admin", "action": "rule.update", "target": "GOV-01", "details": {"enabled": true}}
