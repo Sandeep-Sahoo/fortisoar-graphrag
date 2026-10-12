@@ -5,6 +5,7 @@ import pytest
 @pytest.fixture(autouse=True)
 def isolated_data(tmp_path, monkeypatch):
     import app.audit as audit
+    import app.develop.store as develop_store
     import app.exports as exports
     import app.ingest.state as ingest_state
     import app.review.rules as rules
@@ -13,8 +14,10 @@ def isolated_data(tmp_path, monkeypatch):
     import app.search_store as search_store
     import app.usage as usage
     import app.users as users
+    import app.workspace as workspace
 
     monkeypatch.setattr(audit, "AUDIT_FILE", tmp_path / "audit.jsonl")
+    monkeypatch.setattr(develop_store, "DIR", tmp_path / "develop")
     monkeypatch.setattr(users, "USERS_FILE", tmp_path / "users.json")
     monkeypatch.setattr(usage, "USAGE_FILE", tmp_path / "usage.json")
     monkeypatch.setattr(rules, "RULES_FILE", tmp_path / "review" / "rules.json")
@@ -28,4 +31,8 @@ def isolated_data(tmp_path, monkeypatch):
     monkeypatch.setattr(search_store, "SAVED_FILE", tmp_path / "search" / "saved.json")
     monkeypatch.setattr(exports, "HISTORY", tmp_path / "exports.json")
     monkeypatch.setattr(ingest_state, "STATE", tmp_path / "ingest_state.json")
+    monkeypatch.setattr(workspace, "DATA_ROOT", tmp_path)
+    monkeypatch.setattr(workspace, "CONFIG", tmp_path / "workspaces.json")
+    token = workspace.set_current(workspace.DEFAULT)
     yield tmp_path
+    workspace.reset(token)

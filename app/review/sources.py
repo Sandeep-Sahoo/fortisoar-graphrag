@@ -24,6 +24,7 @@ from pathlib import Path, PurePosixPath
 from ..ingest.playbooks import UUID_RE, _collections, parse_playbook
 from . import store
 from .engine import Context, diff_signatures, review_workflow
+from ..workspace import path as _ws
 
 ROOT = Path(__file__).resolve().parent.parent.parent / "data" / "uploads"
 SOURCES_FILE = ROOT / "sources.json"
@@ -48,7 +49,7 @@ class NullEmbedder:
 
 def sources() -> list[dict]:
     try:
-        return json.loads(SOURCES_FILE.read_text())
+        return json.loads(_ws(SOURCES_FILE).read_text())
     except (OSError, ValueError):
         return []
 
@@ -58,10 +59,10 @@ def get(source_id: str) -> dict | None:
 
 
 def _save_sources(items: list[dict]) -> None:
-    ROOT.mkdir(parents=True, exist_ok=True)
-    tmp = SOURCES_FILE.with_suffix(".tmp")
+    _ws(ROOT).mkdir(parents=True, exist_ok=True)
+    tmp = _ws(SOURCES_FILE).with_suffix(".tmp")
     tmp.write_text(json.dumps(items, indent=1))
-    tmp.replace(SOURCES_FILE)
+    tmp.replace(_ws(SOURCES_FILE))
 
 
 def _update(source_id: str, **changes) -> dict:
@@ -76,7 +77,7 @@ def _update(source_id: str, **changes) -> dict:
 
 
 def _files_dir(source_id: str) -> Path:
-    return ROOT / source_id / "files"
+    return _ws(ROOT) / source_id / "files"
 
 
 def _new_source(name: str, kind: str, by: str, **extra) -> dict:
@@ -292,7 +293,9 @@ def process(source_id: str, svc, version: str | None = None, progress=print) -> 
     # reviews
     known = originals | {r["uuid"] for r in g.read("MATCH (p:Playbook) WHERE NOT coalesce(p.placeholder, false) "
                                                    "AND coalesce(p.pack_type, '') <> 'upload' RETURN p.uuid AS uuid")}
-    gh = github_index.index()
+    from .. import workspace
+
+    gh = github_index.index() if workspace.has("github") else {}  # fully separate workspaces don't compare with Fortinet
     previous = store.source_reviews(source_id).get("reviews", {})
     reviews = {}
     for f, coll, wf in wfs:
@@ -386,7 +389,7 @@ def delete(source_id: str, svc) -> bool:
     keys = list(store.source_reviews(source_id).get("reviews", {}))
     store.forget(keys)
     store.drop_source_reviews(source_id)
-    shutil.rmtree(ROOT / source_id, ignore_errors=True)
+    shutil.rmtree(_ws(ROOT) / source_id, ignore_errors=True)
     try:
         g = svc.graph
         g.run("MATCH (p:Playbook {source_id: $sid}) OPTIONAL MATCH (p)-[:HAS_STEP]->(s:Step) DETACH DELETE s, p", sid=source_id)
@@ -405,7 +408,7 @@ def upload_docs(uploads: list[dict], by: str, svc) -> dict:
     """Internal docs: stored as source 'internal', keyword-searchable, linked to playbooks they name. No embeddings."""
     from ..ingest.docs import link_internal_docs, read_text, title_of, write_documents
 
-    target = ROOT / "_docs"
+    target = _ws(ROOT) / "_docs"
     docs = []
     for item in uploads:
         rel = _safe_rel(str(item.get("name") or ""))

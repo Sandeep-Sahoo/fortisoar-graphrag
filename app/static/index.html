@@ -430,10 +430,13 @@
 <body>
 <header>
   <h1>FortiSOAR Graph RAG</h1>
+  <label class="ws-picker" title="Workspace: each has its own database and data; every tab follows this choice">
+    <span class="ws-dot" aria-hidden="true"></span><select id="ws-select" aria-label="Workspace"></select></label>
   <nav class="nav" aria-label="Main">
     <a href="#home" data-view="home">Home</a>
     <a href="#browse/playbooks" data-view="browse">Catalog</a>
     <a href="#chat" data-view="chat">Chat</a>
+    <a href="#develop" data-view="develop">Develop</a>
     <a href="#review" data-view="review">Review</a>
     <a href="#insights" data-view="insights">Insights</a>
     <a href="#github" data-view="github">GitHub</a>
@@ -519,6 +522,7 @@
       <tr><td><b>Home</b></td><td>Stat tiles (click to open the Catalog), the circular overview graph, the selected-node panel and a list of packs or collections.</td><td>Double-click a node to pull its direct links into a readable ring. Use ↺ Replay to re-run the animation. Click the legend to hide or show node types.</td></tr>
       <tr><td><b>Catalog</b></td><td>Tabs for solution packs, playbooks, collections, connectors and documents, each with search, filter and sortable columns, plus a detail panel.</td><td>Click a row. Every name in a detail panel is a link. Open the inline flowchart or sequence diagram for a playbook. Use Show on Home and Ask in chat.</td></tr>
       <tr><td><b>Chat</b></td><td>Saved conversations on the left, the thread in the middle, and the graph of the cited playbooks on the right.</td><td>Ask a question, then a follow-up ("which of those need approval?"). Click a citation chip. Press ▶ Play to walk through a playbook.</td></tr>
+      <tr><td><b>Develop</b></td><td>A chat that designs a new playbook with you: questions about the use case, a proposed workflow and sequence diagram, changes on request, then the developed playbook, its review score and a customer document.</td><td>Describe a use case, press Continue through the suggestions, ask for a change ("notify on Teams"), then Confirm &amp; develop and open the Customer view.</td></tr>
       <tr><td><b>Review</b></td><td>Your own playbooks (uploaded or from a connected Git repo), their best-practice reviews and scores, and the best-practice catalogue.</td><td>Upload an export, open a review, answer the manual checklist, set the status. Add your own best practice on the Best practices tab.</td></tr>
       <tr><td><b>Insights</b></td><td>Connector impact, duplicate playbooks, coverage gaps, call chains, security findings and recent changes, all computed from the graph.</td><td>Pick a connector to see its blast radius. Open a deep call chain as a tree. Export any table as CSV.</td></tr>
       <tr><td><b>GitHub</b></td><td>Every downloaded repo with what's loaded and embedded, ingest history (with playbook diffs), and the embedding planner.</td><td>Re-ingest or Continue a repo. Check the planner before spending embedding quota.</td></tr>
@@ -665,7 +669,17 @@
       connector, trigger, module or origin (Fortinet GitHub / your uploads). <b>Save</b> a search to re-run it after each ingest (the sidebar shows the change in result count),
       or copy a <b>link</b> that runs it for a colleague.</p>
 
-    <h2 id="g-review">9. Reviewing playbooks</h2>
+    <h2 id="g-develop">9. Developing playbooks</h2>
+    <ol>
+      <li><b>Use case.</b> Describe it in plain words. Connectors you name are matched to the catalog (419 connector repos plus how Fortinet's 4,000+ playbooks use them) and assigned a role from the words around them ("check on VirusTotal" → enrichment, "block on FortiGate" → response action).</li>
+      <li><b>Questions.</b> Trigger, scope, indicators, enrichment sources, verdict rule, response actions, approval, notifications, record updates and name, each with suggested answers. <i>Use suggestions for the rest</i> jumps to the design.</li>
+      <li><b>Proposal.</b> A workflow diagram, a sequence diagram and an at-a-glance view, the step list and a draft review score. Ask for changes in the chat (<i>add an approval</i>, <i>notify on Teams</i>, <i>remove the email step</i>, <i>trigger on update</i>, <i>only when severity is Critical</i>, <i>wait 10 minutes</i>…) or edit the design panel. Every change is a new design version.</li>
+      <li><b>Develop.</b> Generates a FortiSOAR collection export with best practices built in: a Configuration step for every environment-specific value, error handling on connector steps, default branches on decisions, an approval with a reject path before response actions, a trigger that only fires on records with the indicators, debug off, imported inactive, and a separate manual <i>Rollback</i> playbook where the connector can undo the action. The reviewer scores it.</li>
+      <li><b>Customer view.</b> A print-ready document (Save as PDF): summary, diagrams, step table, safety controls, prerequisites (connectors, versions, values to set), staging test plan, rollback, review score and version history. <i>Send to Review</i> adds the build to the graph and the Review page.</li>
+    </ol>
+    <div class="callout">Guided mode makes no AI calls. Turn on <b>AI</b> in the composer to describe designs and changes in your own words (1 answer request per message; operations the model invents are dropped). Generated playbooks still need testing in a staging FortiSOAR before production: field names, connector configurations and the approver team are set after import.</div>
+
+    <h2 id="g-review">10. Reviewing playbooks</h2>
     <p><b>Your playbooks.</b> On Review → Your playbooks, upload FortiSOAR exports (collection or single-playbook JSON, or ZIPs of them) or connect a Git repository
       (HTTPS; a read-only token in Settings for private repos). Files are parsed as data and never executed; Git clones run without hooks, submodules or symlinks and keep only JSON.
       Uploaded playbooks join the graph with their own IDs (so they never overwrite Fortinet's), linked to the connectors, modules, child playbooks and docs they use;
@@ -680,7 +694,7 @@
       masked evidence and a suggested fix, a status (open, in review, changes requested, approved) with notes, score history, and optional <b>AI reviewer notes</b> (one model request, on request only).
       Fortinet's own playbooks can be scored too (Review → Score Fortinet playbooks, no AI).</p>
 
-    <h2 id="g-insights">10. Insights, exports and sharing</h2>
+    <h2 id="g-insights">11. Insights, exports and sharing</h2>
     <ul>
       <li><b>Connector impact:</b> every playbook using a connector, the parent playbooks that call those, the packs, modules and operations involved.</li>
       <li><b>Duplicates:</b> playbooks with identical structure, and near-duplicates by step similarity.</li>
@@ -691,14 +705,25 @@
         the graph as PNG; diagrams as SVG or PNG (open a diagram, then ⤓). <b>Links:</b> 🔗 buttons copy a link to a catalog page, review, insights view, chat or search.</li>
     </ul>
 
-    <h2 id="g-access">11. Usage limits, roles and audit</h2>
+    <h2 id="g-access">12. Usage limits, roles and audit</h2>
     <p>The header shows today's model usage (answers and embeddings) against the daily limits in Settings; when <i>Stop at the daily limits</i> is on, answers stop and embeddings stay pending
       instead of hitting provider errors. Identical questions over identical context are answered from the <b>answer cache</b> for free. A local Ollama model (mode full-local) has no limits.
-      Every AI action (chat answer, Explain, AI reviewer notes) asks first and shows what's left. Roles: <b>admin</b> (everything), <b>analyst</b> (AI, uploads, reviews, best practices),
-      <b>viewer</b> (read-only, graph-only chat); manage users under Settings → Users. The audit log records sign-ins, settings changes (keys only), jobs, uploads, reviews, rule changes and AI use.
+      Every AI action (chat answer, Explain, AI reviewer notes) asks first and shows what's left. Roles are given <b>per company</b> (Fortinet, Marlink): <b>admin</b> (that company's settings, operations and audit),
+      <b>analyst</b> (AI, uploads, reviews, best practices, designs), <b>viewer</b> (read-only, graph-only chat) or no access, so people only see their companies.
+      <b>Super-admins</b> have every role everywhere and manage General settings, users, logs and caches. Settings has three tabs: <b>General</b> (all companies),
+      <b>Fortinet</b> and <b>Marlink</b> (each company's database, company name, redaction terms, Git token; Fortinet also has GitHub fetch / sync). The audit log records sign-ins, settings changes (keys only), jobs, uploads, reviews, rule changes and AI use.
       The scheduled sync (Settings → Data sources) re-downloads changed GitHub repos and re-pulls your Git sources without using the AI model.</p>
 
-    <h2 id="g-config">12. Modes, models and access</h2>
+    <h3>Workspaces</h3>
+    <p>The selector in the header switches between <b>Fortinet</b> (Fortinet's GitHub content) and <b>Marlink</b> (Marlink's own playbooks, docs and designs).
+      They are fully separate: each has its own Neo4j database (Marlink: <code>bolt://localhost:7688</code>, the <code>neo4j-marlink</code> service) and its own
+      data folder (reviews, uploads, designs, saved searches, synonyms, history). Every tab follows the selection, which is remembered per browser.
+      The GitHub page and Fortinet scoring exist only in the Fortinet workspace. Two things cross over on purpose: <b>best-practice rules</b> can be imported
+      (Review → Best practices → Import from workspace), and the Develop page in Marlink suggests Marlink's own connectors first and falls back to the
+      Fortinet GitHub connector catalog, labelling each suggestion with its source. Users, the audit log (which records the workspace), usage limits and the
+      AI caches are shared.</p>
+
+    <h2 id="g-config">13. Modes, models and access</h2>
     <table>
       <tr><th>Mode</th><th>Graph</th><th>Language model / embeddings</th><th>Data leaves the machine?</th></tr>
       <tr><td>local</td><td>Neo4j in Docker</td><td>hosted (Gemini by default)</td><td>yes, to the model API</td></tr>
@@ -712,7 +737,7 @@
     <p>The ◐ / ☀ / ☾ button in the header switches between following the system, light and dark. Graphs and diagrams redraw in the new colours.</p>
     <p>Sign-in uses <code>APP_USERNAME</code> / <code>APP_PASSWORD</code> (admin / admin by default; cloud mode refuses the default). Embedding pacing and caching are set with <code>EMBED_TPM</code> and <code>EMBED_CACHE</code>.</p>
 
-    <h2 id="g-limits">13. Limitations and known gaps</h2>
+    <h2 id="g-limits">14. Limitations and known gaps</h2>
     <ul id="g-limits-list">
       <li>Only content published on GitHub is included. Packs that ship their playbooks only through Content Hub appear through their docs alone, and connectors without a public repo (for example some firewall connectors) have no description or action list.</li>
       <li>Calls to playbooks that aren't loaded show as placeholder nodes ("unresolved:&lt;uuid&gt;").</li>
@@ -721,7 +746,7 @@
       <li>The reviewer works from the exported JSON, so it can't see run-time behaviour (e.g. whether a step's Jinja ever fails). Its findings are prompts for a human reviewer, not proof.</li>
     </ul>
 
-    <h2 id="g-glossary">14. Glossary</h2>
+    <h2 id="g-glossary">15. Glossary</h2>
     <table>
       <tr><td><b>Playbook</b></td><td>A FortiSOAR workflow: a trigger plus steps.</td></tr>
       <tr><td><b>Collection</b></td><td>A folder of playbooks.</td></tr>
@@ -735,7 +760,7 @@
       <tr><td><b>Placeholder</b></td><td>A node for a called playbook that isn't loaded.</td></tr>
     </table>
 
-    <h2 id="g-commands">15. Commands</h2>
+    <h2 id="g-commands">16. Commands</h2>
 <pre>.venv/bin/python scripts/fetch_fortinet.py --repos-only     # download / re-sync GitHub content
 .venv/bin/python -m app.cli ingest-fortinet [--wipe --yes]  # (re)load it into the graph
 .venv/bin/python -m app.cli status                          # node counts
@@ -779,6 +804,7 @@
   </div>
 </section>
 
+<section id="view-develop" class="view" hidden></section>
 <section id="view-review" class="view" hidden></section>
 <section id="view-insights" class="view" hidden></section>
 
@@ -788,6 +814,8 @@
     <div class="settings" id="settings">
       <h1>Settings</h1>
       <p class="lead">Configuration is saved to <code>.env</code> and applied immediately, with no restart. Secrets are write-only. Operations run in the background on this server.</p>
+      <nav class="tabs settings-scopes" id="settings-scopes" aria-label="Settings scope"></nav>
+      <p class="lead" id="settings-scope-lead"></p>
       <div id="settings-config"><div class="muted">Loading…</div></div>
       <div id="settings-save" role="region" aria-label="Unsaved changes">
         <span id="settings-dirty"></span><span class="spacer"></span>
@@ -799,8 +827,8 @@
       <p class="lead">Check the current configuration. The model test uses one request of your quota.</p>
       <div class="row" style="display:flex;gap:8px;flex-wrap:wrap">
         <button type="button" data-test="neo4j">Test Neo4j</button>
-        <button type="button" data-test="embeddings">Test embeddings</button>
-        <button type="button" data-test="llm">Test answer model</button>
+        <button type="button" data-test="embeddings" data-super>Test embeddings</button>
+        <button type="button" data-test="llm" data-super>Test answer model</button>
       </div>
       <div id="test-result" class="muted" style="margin-top:8px"></div>
 
@@ -821,6 +849,7 @@
       </div>
       <table id="links-table" style="margin-top:8px"></table>
 
+      <div data-super>
       <h2 id="s-logs">Logs</h2>
       <p class="lead">Server log (<code id="log-file">data/logs/app.log</code>). Each error message in the app ends with “ref …”, its request ID: search for it here.</p>
       <div class="row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
@@ -831,6 +860,7 @@
         <button type="button" id="log-refresh">Refresh</button>
       </div>
       <div class="log-view" id="log-view"><div class="muted">Loading…</div></div>
+      </div>
 
       <h2 id="s-ui">Interface preferences</h2>
       <p class="lead">Saved in this browser only.</p>
@@ -2484,24 +2514,51 @@ document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("gh-dra
 let settingsFields = [], settingsDirty = {}, jobTimer = null;
 const toast = notify;
 
+let settingsScope = null, settingsScopes = [];
 async function renderSettings() {
   const nav = $("settings-nav");
   if (!nav.children.length) {
-    const groups = ["General", "AI models", "Database", "Security", "Retrieval & chat", "Data sources"];
-    nav.innerHTML = `<h2>Configuration</h2>${groups.map(g => `<button type="button" data-target="sg-${g.replace(/\W+/g, "-")}">${g}</button>`).join("")}
+    nav.innerHTML = `<h2>Configuration</h2><div id="settings-groups-nav"></div>
       <h2>Control</h2><button type="button" data-target="s-tests">Connection tests</button><button type="button" data-target="s-ops">Operations</button>
-      <button type="button" data-target="s-links">Doc ↔ playbook links</button><button type="button" data-target="s-logs">Logs</button>
+      <button type="button" data-target="s-links">Doc ↔ playbook links</button><button type="button" data-target="s-logs" data-super>Logs</button>
       <button type="button" data-target="s-ui">Interface preferences</button>`;
     nav.querySelectorAll("button").forEach(b => b.onclick = () => document.getElementById(b.dataset.target)?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" }));
   }
-  await Promise.all([loadSettings(), loadOperations(), loadLinks(), loadLogs()]);
+  try { settingsScopes = (await api("/admin/settings/scopes")).scopes; } catch { settingsScopes = []; }
+  if (!settingsScopes.some(x => x.id === settingsScope)) {
+    const saved = store.get("graphrag.settingsScope");
+    settingsScope = (settingsScopes.find(x => x.id === saved) || settingsScopes.find(x => x.id === window.WORKSPACE?.id) || settingsScopes[0])?.id || null;
+  }
+  const label = window.WORKSPACE?.label || "this company";
+  $("s-ops").textContent = `Operations — ${label}`;
+  await Promise.all([loadSettings(), loadOperations(), loadLinks(), window.ME?.superadmin ? loadLogs() : Promise.resolve()]);
   renderUiPrefs();
 }
 
+function renderScopeTabs() {
+  $("settings-scopes").innerHTML = settingsScopes.map(x => `<a href="#" data-scope="${esc(x.id)}" aria-current="${x.id === settingsScope ? "page" : "false"}"
+    style="--c:${x.color || "var(--accent)"}" title="${esc(x.description)}">${esc(x.id === "general" ? "General (all companies)" : x.label)}</a>`).join("");
+  $("settings-scopes").querySelectorAll("a").forEach(a => a.onclick = e => {
+    e.preventDefault();
+    if (Object.keys(settingsDirty).length && !confirm("Discard unsaved changes on this tab?")) return;
+    settingsScope = a.dataset.scope; store.set("graphrag.settingsScope", settingsScope); loadSettings();
+  });
+  const cur = settingsScopes.find(x => x.id === settingsScope);
+  $("settings-scope-lead").textContent = cur ? cur.description + "." : "";
+}
+
 async function loadSettings() {
-  const data = await api("/admin/settings");
+  if (!settingsScope) {
+    $("settings-scopes").innerHTML = ""; $("settings-scope-lead").textContent = "";
+    $("settings-config").innerHTML = `<div class="muted">You don't manage any settings. Company settings need that company's admin role; General settings need a super-admin.</div>`;
+    return;
+  }
+  renderScopeTabs();
+  const data = await api(`/admin/settings?scope=${encodeURIComponent(settingsScope)}`);
   settingsFields = data.fields; settingsDirty = {};
   const groups = [...new Set(settingsFields.map(f => f.group))];
+  $("settings-groups-nav").innerHTML = groups.map(g => `<button type="button" data-target="sg-${g.replace(/\W+/g, "-")}">${esc(g)}</button>`).join("");
+  $("settings-groups-nav").querySelectorAll("button").forEach(b => b.onclick = () => document.getElementById(b.dataset.target)?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" }));
   $("settings-config").innerHTML = groups.map(g => `<h2 id="sg-${g.replace(/\W+/g, "-")}">${esc(g)}</h2>` + settingsFields.filter(f => f.group === g).map(fieldHtml).join("")).join("");
   $("settings-config").querySelectorAll("[data-key]").forEach(el => {
     const handler = () => {
@@ -2541,7 +2598,7 @@ $("settings-apply").onclick = async () => {
   if (danger.length && !confirm(`${danger.join(", ")} change(s) make stored embeddings incompatible. You'll need to wipe and re-ingest. Continue?`)) return;
   $("settings-apply").disabled = true;
   try {
-    const r = await post("/admin/settings", { values: settingsDirty });
+    const r = await post("/admin/settings", { values: settingsDirty, scope: settingsScope });
     toast(`Saved and applied: ${r.changed.join(", ") || "nothing changed"}${r.needs_reingest?.length ? ". Wipe and re-ingest needed for the new embeddings." : ""}`);
     $("mode").textContent = `${r.config.mode} · ${r.config.llm}`;
     homeLoaded = false; guideRendered = false; Object.keys(catalogData).forEach(k => delete catalogData[k]);
@@ -2691,7 +2748,7 @@ async function bootChat() {
 }
 function parseHash() {
   const [view, kind, ...rest] = location.hash.replace(/^#/, "").split("/");
-  const views = ["home", "browse", "chat", "guide", "settings", "github", "review", "insights", "search"];
+  const views = ["home", "browse", "chat", "guide", "settings", "github", "review", "insights", "search", "develop"];
   return { view: views.includes(view) ? view : "home", kind: kind ? decodeURIComponent(kind) : kind, id: rest.length ? decodeURIComponent(rest.join("/")) : null };
 }
 async function route() {
@@ -2729,7 +2786,7 @@ async function showView(name) {
   } else if (name === "settings") {
     stopPlay();
     renderSettings().then(() => window.afterSettings?.()).catch(err => toast(err.message, true));
-  } else if (name === "review" || name === "insights") {
+  } else if (name === "review" || name === "insights" || name === "develop") {
     stopPlay();
   } else {
     requestAnimationFrame(() => cy.resize());
@@ -2757,10 +2814,11 @@ $("btn-logout").onclick = async () => { await fetch("/auth/logout", { method: "P
     $("mode").textContent = `${health.config.mode} · ${health.config.llm}`;
   } catch (err) {
     if (err.message === "Signed out") return;
-    $("mode").textContent = "not ready";
-    $("home-details").innerHTML = `<span class="error">App is not ready: ${esc(err.message)}</span>`;
-    $("view-home").hidden = false;
-    return;
+    $("mode").textContent = "graph offline";
+    const banner = document.createElement("div");
+    banner.className = "ws-banner";
+    banner.innerHTML = `<span class="error">${esc(err.message)}</span>`;
+    document.querySelector("header").after(banner);
   }
   route();
 })();
@@ -2768,5 +2826,6 @@ $("btn-logout").onclick = async () => { await fetch("/auth/logout", { method: "P
 <script src="/static/js/platform.js"></script>
 <script src="/static/js/review.js"></script>
 <script src="/static/js/insights.js"></script>
+<script src="/static/js/develop.js"></script>
 </body>
 </html>

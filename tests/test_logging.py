@@ -62,7 +62,7 @@ def test_unexpected_errors_are_clean_and_traceable(client, monkeypatch):
         raise ServiceUnavailable("connection refused")
     monkeypatch.setattr(api, "get_services", down)
     r = client.get("/chats")
-    assert r.status_code == 503 and "graph database is unavailable" in r.json()["detail"]
+    assert r.status_code == 503 and "graph database isn't reachable" in r.json()["detail"]
 
     r = client.get("/chats", headers={"X-Request-ID": "trace-me"})
     assert r.headers["x-request-id"] == "trace-me"

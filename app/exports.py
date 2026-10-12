@@ -12,6 +12,7 @@ import json
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from .workspace import path as _ws
 
 HISTORY = Path(__file__).resolve().parent.parent / "data" / "exports" / "history.json"
 _lock = threading.Lock()
@@ -31,15 +32,15 @@ def _record_export(key: str, user: str, summary: str) -> list[dict]:
     """Append-only generation log (never edits earlier rows)."""
     with _lock:
         try:
-            data = json.loads(HISTORY.read_text())
+            data = json.loads(_ws(HISTORY).read_text())
         except (OSError, ValueError):
             data = {}
         rows = data.setdefault(key, [])
         version = f"1.{len(rows)}"
         rows.append({"version": version, "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
                      "by": user or "-", "summary": summary})
-        HISTORY.parent.mkdir(parents=True, exist_ok=True)
-        HISTORY.write_text(json.dumps(data, indent=1))
+        _ws(HISTORY).parent.mkdir(parents=True, exist_ok=True)
+        _ws(HISTORY).write_text(json.dumps(data, indent=1))
         return rows
 
 

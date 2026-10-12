@@ -5,7 +5,7 @@ The same tool functions back the REST API and the MCP server.
 from __future__ import annotations
 
 import re
-from functools import cached_property, lru_cache
+from functools import cached_property
 
 from .config import get_settings
 from .graph import Graph
@@ -29,25 +29,42 @@ Rules:
 
 
 class Services:
+    """Everything one workspace needs. The graph, settings and redaction are the workspace's own; the AI model and
+    embeddings are shared with the default workspace (their caches are keyed by text, so nothing mixes)."""
+
+    def __init__(self, workspace: str | None = None, shared: "Services | None" = None):
+        from . import workspace as ws
+
+        self.workspace = workspace or ws.DEFAULT
+        self._shared = shared
+
     @cached_property
     def settings(self):
-        return get_settings()
+        from .workspace import settings_for
+
+        return settings_for(get_settings(), self.workspace)
 
     @cached_property
     def graph(self) -> Graph:
-        return Graph(self.settings)
+        g = Graph(self.settings)
+        if self._shared is not None:  # a newly added workspace database: create indexes on first use
+            try:
+                g.ensure_schema()
+            except Exception:
+                pass
+        return g
 
     @cached_property
     def llm(self):
-        return make_llm(self.settings)
+        return self._shared.llm if self._shared is not None else make_llm(self.settings)
 
     @cached_property
     def embedder(self):
-        return make_embedder(self.settings)
+        return self._shared.embedder if self._shared is not None else make_embedder(self.settings)
 
     @cached_property
     def scrubber(self) -> Scrubber:
-        return Scrubber(self.settings.scrub_terms)
+        return Scrubber(self.settings.scrub_terms)  # each company redacts its own tenant / customer names
 
     @cached_property
     def chats(self):
@@ -307,6 +324,23 @@ class Services:
         return {"nodes": list(nodes.values()), "edges": edges}
 
 
-@lru_cache
-def get_services() -> Services:
-    return Services()
+_instances: dict[str, Services] = {}
+
+
+def get_services(workspace: str | None = None) -> Services:
+    """Services for the current request's workspace (or the one given)."""
+    from . import workspace as ws
+
+    name = workspace or ws.current()
+    if name not in _instances:
+        base = _instances.get(ws.DEFAULT) or _instances.setdefault(ws.DEFAULT, Services(ws.DEFAULT))
+        if name != ws.DEFAULT:
+            _instances[name] = Services(name, shared=base)
+    return _instances[name]
+
+
+def _clear() -> None:
+    _instances.clear()
+
+
+get_services.cache_clear = _clear  # settings changes reset every workspace's services

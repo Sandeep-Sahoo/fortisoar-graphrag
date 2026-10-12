@@ -7,6 +7,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from .workspace import path as _ws
 
 DIR = Path(__file__).resolve().parent.parent / "data" / "search"
 SYNONYMS_FILE = DIR / "synonyms.json"
@@ -57,7 +58,7 @@ def _read(path: Path, default):
 
 
 def _write(path: Path, data) -> None:
-    DIR.mkdir(parents=True, exist_ok=True)
+    _ws(DIR).mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=1))
     tmp.replace(path)
@@ -66,7 +67,7 @@ def _write(path: Path, data) -> None:
 # ---------------------------------------------------------------- synonyms
 
 def synonyms() -> dict[str, list[str]]:
-    data = _read(SYNONYMS_FILE, None)
+    data = _read(_ws(SYNONYMS_FILE), None)
     return DEFAULT_SYNONYMS if data is None else data
 
 
@@ -85,13 +86,13 @@ def set_synonyms(mapping: dict) -> dict[str, list[str]]:
     if len(clean) > 2000:
         raise ValueError("too many synonym entries (max 2000)")
     with _lock:
-        _write(SYNONYMS_FILE, clean)
+        _write(_ws(SYNONYMS_FILE), clean)
     return clean
 
 
 def reset_synonyms() -> dict[str, list[str]]:
     with _lock:
-        SYNONYMS_FILE.unlink(missing_ok=True)
+        _ws(SYNONYMS_FILE).unlink(missing_ok=True)
     return DEFAULT_SYNONYMS
 
 
@@ -116,7 +117,7 @@ def expand(question: str, terms: list[str]) -> list[list[str]]:
 # ---------------------------------------------------------------- saved searches
 
 def saved() -> list[dict]:
-    return _read(SAVED_FILE, [])
+    return _read(_ws(SAVED_FILE), [])
 
 
 def save_search(name: str, query: str, filters: dict, by: str) -> dict:
@@ -132,7 +133,7 @@ def save_search(name: str, query: str, filters: dict, by: str) -> dict:
         if len(items) >= 500:
             raise ValueError("too many saved searches (max 500)")
         items.append(entry)
-        _write(SAVED_FILE, items)
+        _write(_ws(SAVED_FILE), items)
     return entry
 
 
@@ -142,7 +143,7 @@ def delete_search(search_id: str) -> bool:
         keep = [s for s in items if s["id"] != search_id]
         if len(keep) == len(items):
             return False
-        _write(SAVED_FILE, keep)
+        _write(_ws(SAVED_FILE), keep)
     return True
 
 
@@ -154,6 +155,6 @@ def record_run(search_id: str, count: int) -> dict | None:
                 s["previous_count"] = s.get("last_count")
                 s["last_count"] = count
                 s["last_run"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-                _write(SAVED_FILE, items)
+                _write(_ws(SAVED_FILE), items)
                 return s
     return None

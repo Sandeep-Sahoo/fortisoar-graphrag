@@ -8,6 +8,7 @@ import json
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from ..workspace import path as _ws
 
 DIR = Path(__file__).resolve().parent.parent.parent / "data" / "review"
 ANSWERS = DIR / "answers.json"
@@ -40,45 +41,45 @@ def _write(path: Path, data) -> None:
 # ---------------------------------------------------------------- reviewer answers + status
 
 def answers(key: str) -> dict:
-    return _read(ANSWERS, {}).get(key, {}).get("rules", {})
+    return _read(_ws(ANSWERS), {}).get(key, {}).get("rules", {})
 
 
 def meta(key: str) -> dict:
-    entry = _read(ANSWERS, {}).get(key, {})
+    entry = _read(_ws(ANSWERS), {}).get(key, {})
     return {k: entry.get(k) for k in ("status", "notes", "status_by", "status_at")}
 
 
 def all_meta() -> dict:
-    return {k: {"status": v.get("status"), "answered": len(v.get("rules", {}))} for k, v in _read(ANSWERS, {}).items()}
+    return {k: {"status": v.get("status"), "answered": len(v.get("rules", {}))} for k, v in _read(_ws(ANSWERS), {}).items()}
 
 
 def set_answer(key: str, rule_id: str, answer: str | None, note: str, by: str) -> None:
     if answer not in (None, "", "pass", "fail", "na"):
         raise ValueError("answer must be pass, fail or na")
     with _lock:
-        data = _read(ANSWERS, {})
+        data = _read(_ws(ANSWERS), {})
         rules = data.setdefault(key, {}).setdefault("rules", {})
         if not answer:
             rules.pop(rule_id, None)
         else:
             rules[rule_id] = {"answer": answer, "note": note.strip()[:500], "by": by, "at": now()}
-        _write(ANSWERS, data)
+        _write(_ws(ANSWERS), data)
 
 
 def set_status(key: str, status: str, notes: str, by: str) -> dict:
     if status not in STATUSES:
         raise ValueError(f"status must be one of {STATUSES}")
     with _lock:
-        data = _read(ANSWERS, {})
+        data = _read(_ws(ANSWERS), {})
         entry = data.setdefault(key, {})
         entry.update(status=status, notes=notes.strip()[:4000], status_by=by, status_at=now())
-        _write(ANSWERS, data)
+        _write(_ws(ANSWERS), data)
     return meta(key)
 
 
 def forget(keys: list[str]) -> None:
     with _lock:
-        for path in (ANSWERS, HISTORY, AI_NOTES):
+        for path in (_ws(ANSWERS), _ws(HISTORY), _ws(AI_NOTES)):
             data = _read(path, {})
             if any(k in data for k in keys):
                 for k in keys:
@@ -90,7 +91,7 @@ def forget(keys: list[str]) -> None:
 
 def add_history(key: str, review: dict, changes: dict | None, source_version: str | None = None) -> None:
     with _lock:
-        data = _read(HISTORY, {})
+        data = _read(_ws(HISTORY), {})
         items = data.setdefault(key, [])
         entry = {"at": review["reviewed_at"], "score": review["score"], "grade": review["grade"], "verdict": review["verdict"],
                  "findings": len(review["findings"]), "version": source_version,
@@ -99,52 +100,52 @@ def add_history(key: str, review: dict, changes: dict | None, source_version: st
         if last and last["score"] == entry["score"] and not entry["changes"] and last.get("version") == source_version:
             return
         data[key] = ([entry] + items)[:25]
-        _write(HISTORY, data)
+        _write(_ws(HISTORY), data)
 
 
 def history(key: str) -> list[dict]:
-    return _read(HISTORY, {}).get(key, [])
+    return _read(_ws(HISTORY), {}).get(key, [])
 
 
 # ---------------------------------------------------------------- AI reviewer notes
 
 def ai_note(key: str) -> dict | None:
-    return _read(AI_NOTES, {}).get(key)
+    return _read(_ws(AI_NOTES), {}).get(key)
 
 
 def set_ai_note(key: str, text: str, model: str, by: str, score: int) -> dict:
     with _lock:
-        data = _read(AI_NOTES, {})
+        data = _read(_ws(AI_NOTES), {})
         data[key] = {"text": text, "model": model, "by": by, "at": now(), "score_at_time": score}
-        _write(AI_NOTES, data)
+        _write(_ws(AI_NOTES), data)
     return data[key]
 
 
 # ---------------------------------------------------------------- per-source reviews (uploads)
 
 def source_reviews(source_id: str) -> dict:
-    return _read(SOURCES_DIR / f"{source_id}.json", {"reviews": {}})
+    return _read(_ws(SOURCES_DIR) / f"{source_id}.json", {"reviews": {}})
 
 
 def save_source_reviews(source_id: str, data: dict) -> None:
     with _lock:
-        _write(SOURCES_DIR / f"{source_id}.json", data)
+        _write(_ws(SOURCES_DIR) / f"{source_id}.json", data)
 
 
 def drop_source_reviews(source_id: str) -> None:
     with _lock:
-        (SOURCES_DIR / f"{source_id}.json").unlink(missing_ok=True)
+        (_ws(SOURCES_DIR) / f"{source_id}.json").unlink(missing_ok=True)
 
 
 # ---------------------------------------------------------------- GitHub batch scores
 
 def github_scores() -> dict:
-    return _read(GITHUB, {"generated": None, "rules_version": None, "playbooks": {}})
+    return _read(_ws(GITHUB), {"generated": None, "rules_version": None, "playbooks": {}})
 
 
 def save_github_scores(data: dict) -> None:
     with _lock:
-        _write(GITHUB, data)
+        _write(_ws(GITHUB), data)
 
 
 def light(review: dict) -> dict:

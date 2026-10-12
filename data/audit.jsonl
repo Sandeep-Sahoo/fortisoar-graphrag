@@ -12,3 +12,33 @@
 {"at": "2026-10-12T07:06:02+00:00", "user": "admin", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
 {"at": "2026-10-12T07:07:54+00:00", "user": "admin", "action": "rule.update", "target": "GOV-01", "details": {"enabled": false}}
 {"at": "2026-10-12T07:07:55+00:00", "user": "admin", "action": "rule.update", "target": "GOV-01", "details": {"enabled": true}}
+{"at": "2026-10-12T08:05:04+00:00", "user": "admin", "action": "chat.graph", "target": "65535bcf-f08b-446c-bc47-497b2bbba896", "details": {"chars": 44}}
+{"at": "2026-10-12T10:38:48+00:00", "user": "admin", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T10:38:51+00:00", "user": "admin", "action": "develop.create", "target": "43c99c9296"}
+{"at": "2026-10-12T10:39:28+00:00", "user": "admin", "action": "develop.build", "target": "43c99c9296", "details": {"version": 1, "score": 94}}
+{"at": "2026-10-12T10:41:15+00:00", "user": "admin", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T10:41:15+00:00", "user": "admin", "action": "develop.create", "target": "1e7f6ffec1"}
+{"at": "2026-10-12T10:41:17+00:00", "user": "admin", "action": "develop.build", "target": "1e7f6ffec1", "details": {"version": 1, "score": 88}}
+{"at": "2026-10-12T10:41:17+00:00", "user": "admin", "action": "develop.delete", "target": "1e7f6ffec1"}
+{"at": "2026-10-12T10:41:17+00:00", "user": "admin", "action": "develop.delete", "target": "43c99c9296"}
+{"at": "2026-10-12T10:42:32+00:00", "user": "admin", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T10:43:19+00:00", "user": "admin", "action": "develop.create", "target": "cea0147a02"}
+{"at": "2026-10-12T10:56:42+00:00", "user": "admin", "action": "develop.build", "target": "cea0147a02", "details": {"version": 1, "score": 100}}
+{"at": "2026-10-12T10:59:01+00:00", "user": "admin", "action": "develop.to_review", "target": "cea0147a02", "details": {"version": 1}}
+{"at": "2026-10-12T11:29:49+00:00", "user": "admin", "ws": "fortinet", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T11:31:18+00:00", "user": "admin", "ws": "fortinet", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T11:32:06+00:00", "user": "admin", "ws": "fortinet", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T11:32:54+00:00", "user": "admin", "ws": "fortinet", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T11:33:25+00:00", "user": "admin", "ws": "fortinet", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T11:35:18+00:00", "user": "admin", "ws": "fortinet", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T11:35:58+00:00", "user": "admin", "ws": "fortinet", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T11:38:50+00:00", "user": "admin", "ws": "fortinet", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T11:38:55+00:00", "user": "admin", "ws": "marlink", "action": "source.upload", "target": "439d32fb", "details": {"name": "Workspace check", "files": 1, "playbooks": 1}}
+{"at": "2026-10-12T11:38:56+00:00", "user": "admin", "ws": "marlink", "action": "source.delete", "target": "439d32fb"}
+{"at": "2026-10-12T11:46:14+00:00", "user": "admin", "ws": "fortinet", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T11:46:22+00:00", "user": "admin", "ws": "fortinet", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T11:46:22+00:00", "user": "admin", "ws": "marlink", "action": "rule.import", "target": "fortinet", "details": {"added": 0, "updated": 0, "overrides": 1}}
+{"at": "2026-10-12T11:50:59+00:00", "user": "admin", "ws": "fortinet", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T11:52:17+00:00", "user": "admin", "ws": "fortinet", "action": "auth.login", "target": "127.0.0.1", "details": {"role": "admin"}}
+{"at": "2026-10-12T11:53:48+00:00", "user": "admin", "ws": "fortinet", "action": "test.neo4j", "target": ""}
+{"at": "2026-10-12T11:53:51+00:00", "user": "admin", "ws": "fortinet", "action": "test.llm", "target": ""}

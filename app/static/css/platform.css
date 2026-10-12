@@ -139,3 +139,64 @@ body[data-role="viewer"] [data-min-role="analyst"], body:not([data-role="admin"]
   .page-main { border-right: 0; }
   .page-side { border-top: 1px solid var(--border); }
 }
+
+/* develop (chat-style playbook designer) */
+.dv-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr) minmax(340px, 440px); height: calc(100vh - 50px); }
+.dv-sessions { border-right: 1px solid var(--border); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+.dv-sessions .top { padding: 12px; }
+.dv-sessions .top button { width: 100%; }
+.dv-sessions ul { list-style: none; margin: 0; padding: 0 8px 12px; overflow-y: auto; }
+.dv-sessions li { position: relative; padding: 8px 26px 8px 10px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.dv-sessions li:hover { background: var(--sunk); }
+.dv-sessions li.active { background: var(--accent-bg); }
+.dv-sessions li .title { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dv-sessions li .meta { font-size: 11px; color: var(--muted); display: flex; gap: 4px; align-items: center; }
+.dv-sessions li .meta .grade { width: 16px; height: 16px; font-size: 9px; }
+.dv-sessions li .del { position: absolute; right: 4px; top: 8px; border: 0; background: none; padding: 0 4px; color: var(--muted); visibility: hidden; }
+.dv-sessions li:hover .del { visibility: visible; }
+.dv-chat { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); }
+.dv-thread { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; }
+.dv-msg { max-width: 100%; font-size: 14px; }
+.dv-msg.user { align-self: flex-end; max-width: 80%; }
+.dv-msg.user .bubble { background: var(--accent-bg); color: var(--accent-text); padding: 8px 12px; border-radius: 14px 14px 4px 14px; white-space: pre-wrap; }
+.dv-msg.bot .md p:first-child { margin-top: 0; }
+.dv-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.dv-chips .chip { border-radius: 999px; font-size: 13px; padding: 5px 12px; text-align: left; }
+.dv-chips .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--panel); }
+.dv-chips .chip:disabled { opacity: .5; cursor: default; }
+.dv-card { border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; background: var(--panel); display: flex; flex-direction: column; gap: 8px; }
+.dv-card-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.dv-card-head .spacer { flex: 1; }
+.dv-developed { border-color: var(--ok); }
+.dv-diagram { border: 1px solid var(--border); border-radius: 10px; padding: 8px; overflow: auto; max-height: 520px; cursor: zoom-in; background: var(--bg); }
+.dv-diagram svg { max-width: 100%; height: auto; }
+.dv-composer { border-top: 1px solid var(--border); padding: 12px 16px; background: var(--panel); }
+.dv-composer .row { display: flex; gap: 8px; align-items: flex-end; }
+.dv-composer textarea { flex: 1; resize: none; min-height: 42px; max-height: 160px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+.dv-composer .hint { font-size: 11px; color: var(--muted); margin-top: 4px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.dv-composer .mode { display: inline-flex; gap: 5px; align-items: center; color: var(--text); cursor: pointer; }
+.dv-empty { margin: auto; max-width: 560px; color: var(--muted); font-size: 14px; }
+.dv-empty h2 { color: var(--text); font-size: 18px; }
+.dv-panel { display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
+.dv-panel .tabs { padding-top: 8px; }
+.dv-panel-body { overflow-y: auto; padding: 4px 16px 24px; font-size: 13px; }
+.dv-panel-body h3 { font-size: 12px; font-weight: 600; color: var(--muted); margin: 16px 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+.dv-panel-body input, .dv-panel-body textarea, .dv-panel-body select { padding: 6px 8px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; font-size: 13px; }
+.dp-steps { padding-left: 20px; margin: 0; }
+.dp-steps li { padding: 5px 0; border-bottom: 1px solid var(--border); position: relative; }
+.dp-steps .dp-acts { float: right; display: inline-flex; gap: 2px; }
+.dp-steps .dp-acts button { padding: 0 6px; font-size: 12px; }
+.dp-config td { padding: 5px 6px; }
+@media (max-width: 1100px) { .dv-layout { grid-template-columns: 200px minmax(0, 1fr); } .dv-panel { grid-column: 1 / -1; border-top: 1px solid var(--border); } }
+@media (max-width: 760px) { .dv-layout { grid-template-columns: 1fr; height: auto; } .dv-sessions { max-height: 200px; } .dv-chat { min-height: 70vh; } }
+
+/* workspaces */
+header { border-bottom: 3px solid var(--ws-color, var(--border)); }
+.ws-picker { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 4px 2px 10px; background: var(--panel); flex-shrink: 0; }
+.ws-picker .ws-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ws-color, var(--accent)); }
+.ws-picker select { border: 0; background: transparent; color: var(--text); font: inherit; font-size: 13px; font-weight: 600; padding: 3px 4px; cursor: pointer; }
+body:not([data-github]) [data-feature="github"] { display: none !important; }
+.ws-banner { font-size: 12px; padding: 4px 16px; background: color-mix(in srgb, var(--ws-color) 12%, var(--panel)); color: var(--text); border-bottom: 1px solid var(--border); }
+
+body:not([data-super]) [data-super] { display: none !important; }
+.settings-scopes { padding: 0; margin: 8px 0 6px; background: none; }

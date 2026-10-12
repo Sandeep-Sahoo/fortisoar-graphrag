@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import json
 from pathlib import Path
 
@@ -102,6 +103,10 @@ def main() -> None:
     p.add_argument("--yes", action="store_true")
 
     args = parser.parse_args()
+    from . import workspace
+
+    if os.environ.get("APP_WORKSPACE"):
+        workspace.set_current(os.environ["APP_WORKSPACE"])
     svc = get_services()
     svc.settings  # validate config up front so problems surface before any work starts
 

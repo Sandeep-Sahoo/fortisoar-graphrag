@@ -153,10 +153,131 @@ def reset_services() -> None:
     """Drop cached services (graph driver, models, retriever) so the next request uses the new settings."""
     from .services import get_services
 
-    try:
-        old = get_services()
-        if "graph" in old.__dict__:
-            old.graph.close()
-    except Exception:
-        pass
+    from .services import _instances
+
+    for old in list(_instances.values()):
+        try:
+            if "graph" in old.__dict__:
+                old.graph.close()
+        except Exception:
+            pass
     get_services.cache_clear()
+
+
+# ---------------------------------------------------------------- scopes: General (all companies) / per company
+
+WORKSPACE_KEYS = ("COMPANY_NAME", "FORTISOAR_VERSION", "SCRUB_TERMS", "NEO4J_URI", "NEO4J_USER", "NEO4J_PASSWORD", "NEO4J_DATABASE",
+                  "GIT_TOKEN", "GIT_TOKEN_USER", "SYNC_SOURCES")
+FORTINET_KEYS = ("FETCH_ORG", "FETCH_PREFIXES", "SYNC_AUTO_INGEST")   # GitHub content: only where the "github" feature is on
+
+
+def scope_of(key: str) -> str:
+    return "workspace" if key in WORKSPACE_KEYS else "github" if key in FORTINET_KEYS else "general"
+
+
+def keys_for(scope: str) -> list[str]:
+    """Setting keys shown on a Settings tab: 'general' or a workspace id."""
+    from . import workspace
+
+    if scope == "general":
+        return [f[0] for f in FIELDS if scope_of(f[0]) == "general"]
+    keys = [k for k in WORKSPACE_KEYS]
+    if workspace.has("github", scope):
+        keys += list(FORTINET_KEYS)
+    return keys
+
+
+def secret_env(key: str, ws: str) -> str:
+    """Where a company's secret lives in .env: the plain key for the default company, KEY_<COMPANY> otherwise."""
+    from . import workspace
+
+    return key if ws == workspace.DEFAULT else f"{key}_{ws.upper()}"
+
+
+def workspace_values(ws: str) -> dict:
+    from . import workspace
+
+    return dict(workspace.registry().get(ws, {}).get("settings") or {})
+
+
+def describe_scope(settings, scope: str) -> list[dict]:
+    """Fields for one Settings tab with their current values (secrets: set / not set only)."""
+    from . import workspace
+
+    keys = keys_for(scope)
+    if scope == "general" or scope == workspace.DEFAULT:
+        fields = [f for f in describe(settings) if f["key"] in keys]
+        if scope == workspace.DEFAULT:
+            for f in fields:
+                f["scope"] = scope_of(f["key"])
+        return fields
+    stored = workspace_values(scope)
+    w = workspace.info(scope)
+    effective = {"NEO4J_URI": w.get("neo4j_uri") or "", "NEO4J_USER": "neo4j", "NEO4J_DATABASE": "neo4j", "COMPANY_NAME": w.get("label", scope),
+                 "GIT_TOKEN_USER": "x-access-token", "SYNC_SOURCES": "true", "FORTISOAR_VERSION": "7.6"}
+    out = []
+    for key, group, label, ftype, help_text, *extra in FIELDS:
+        if key not in keys:
+            continue
+        item = {"key": key, "group": group, "label": label, "type": ftype, "help": help_text, "scope": scope_of(key), **(extra[0] if extra else {})}
+        if ftype == "secret":
+            item["is_set"] = bool(os.environ.get(secret_env(key, scope)) or (key == "NEO4J_PASSWORD" and os.environ.get("NEO4J_PASSWORD")))
+            if key == "NEO4J_PASSWORD" and not os.environ.get(secret_env(key, scope)):
+                item["help"] = (help_text + " Not set for this company: the Fortinet Neo4j password is used.").strip()
+        else:
+            item["value"] = stored.get(key, "")
+            item["effective"] = stored.get(key) or effective.get(key, "")
+        out.append(item)
+    return out
+
+
+def apply_scope(scope: str, updates: dict, env_file: Path | None = None) -> dict:
+    """Save one Settings tab. General and the default company use .env as before; other companies keep their
+    values in data/workspaces.json and their secrets in .env as KEY_<COMPANY>."""
+    import json
+
+    from . import workspace
+
+    allowed = set(keys_for(scope))
+    bad = [k for k in updates if k not in allowed]
+    if bad:
+        raise ValueError(f"{', '.join(bad)} can't be set on the {scope} tab")
+    if scope == "general" or scope == workspace.DEFAULT:
+        return apply(updates, env_file)
+    clean, secrets = {}, {}
+    types = {f[0]: f[3] for f in FIELDS}
+    for key, value in updates.items():
+        value = "" if value is None else str(value).strip()
+        if not VALUE_RE.match(value):
+            raise ValueError(f"{key}: value must be a single line")
+        if types[key] == "secret":
+            if value:
+                secrets[secret_env(key, scope)] = value
+            continue
+        if key == "NEO4J_URI" and value and not re.match(r"^(bolt|neo4j)(\+s|\+ssc)?://[\w.-]+(:\d+)?/?$", value):
+            raise ValueError("NEO4J_URI must look like bolt://host:7687 or neo4j+s://host")
+        clean[key] = value
+    cfg_path = workspace.CONFIG
+    try:
+        cfg = json.loads(cfg_path.read_text())
+    except (OSError, ValueError):
+        cfg = {}
+    entry = cfg.setdefault(scope, {})
+    stored = entry.setdefault("settings", {})
+    changed = []
+    for key, value in clean.items():
+        if stored.get(key, "") != value:
+            changed.append(key)
+            if value:
+                stored[key] = value
+            else:
+                stored.pop(key, None)
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    cfg_path.write_text(json.dumps(cfg, indent=1))
+    if secrets:
+        for k, v in secrets.items():
+            os.environ[k] = v
+        _write_env(secrets, env_file)
+        changed += sorted(k.rsplit("_", 1)[0] for k in secrets)
+    reset_services()
+    return {"changed": sorted(set(changed)), "needs_reingest": []}

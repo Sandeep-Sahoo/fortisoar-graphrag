@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -14,6 +15,9 @@ ROOT = Path(__file__).resolve().parent.parent
 LOGS = ROOT / "data" / "jobs"
 
 # name -> (title, argv builder(options) -> list, description, destructive)
+# operations that work on Fortinet's GitHub download (refused in other workspaces)
+GITHUB_ONLY = {"fetch", "ingest", "ingest_repos", "continue_repos", "ingest_guide", "review_github", "scheduled_sync"}
+
 OPERATIONS = {
     "status": ("Graph status", lambda o: ["-m", "app.cli", "status"], "Node counts and the active configuration.", False),
     "fetch": ("Fetch GitHub content", lambda o: ["scripts/fetch_fortinet.py", "--repos-only"],
@@ -78,8 +82,12 @@ class JobManager:
             job_id = uuid.uuid4().hex[:10]
             log_path = LOGS / f"{job_id}-{name}.log"
             argv = [sys.executable, "-u", *OPERATIONS[name][1](options)]
-            proc = subprocess.Popen(argv, cwd=ROOT, stdout=log_path.open("w"), stderr=subprocess.STDOUT)
-            job = {"id": job_id, "name": name, "title": OPERATIONS[name][0], "status": "running", "started": time.time(),
+            from . import workspace
+
+            ws = workspace.current()
+            env = {**os.environ, "APP_WORKSPACE": ws}  # the job works on the workspace it was started from
+            proc = subprocess.Popen(argv, cwd=ROOT, stdout=log_path.open("w"), stderr=subprocess.STDOUT, env=env)
+            job = {"id": job_id, "name": name, "title": OPERATIONS[name][0], "status": "running", "started": time.time(), "workspace": ws,
                    "ended": None, "returncode": None, "log": str(log_path), "options": options, "_proc": proc}
             self.jobs[job_id] = job
             # start the watcher before anything else can fail, so a job can never be left "running" forever

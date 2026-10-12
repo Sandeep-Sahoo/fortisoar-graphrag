@@ -45,7 +45,7 @@
         card("your sources", num(s.sources), "", "#review/sources") +
         card("your playbooks reviewed", num(s.upload.playbooks), s.upload.avg_score != null ? `avg ${s.upload.avg_score}` : "", "#review/reviews") +
         card("need changes (yours)", num(s.upload.request_changes), "", "#review/reviews") +
-        card("Fortinet playbooks scored", num(s.github.playbooks), s.github.avg_score != null ? `avg ${s.github.avg_score}` : "not yet", "#review/reviews") +
+        (document.body.dataset.github ? card("Fortinet playbooks scored", num(s.github.playbooks), s.github.avg_score != null ? `avg ${s.github.avg_score}` : "not yet", "#review/reviews") : "") +
         card("best practices active", num(s.rules), "", "#review/rules");
       $("rv-cards").querySelectorAll("[data-go]").forEach(c => c.onclick = () => { location.hash = c.dataset.go; });
     } catch (err) { $("rv-cards").innerHTML = `<div class="error">${esc(err.message)}</div>`; }
@@ -214,14 +214,14 @@
     const body = $("rv-body");
     body.innerHTML = `<div class="toolbar">
         <input id="rv-q" type="search" placeholder="Search playbooks, sources, issues…" aria-label="Search reviews">
-        <select id="rv-origin"><option value="">Yours + Fortinet</option><option value="upload">Your playbooks</option><option value="github">Fortinet GitHub</option></select>
+        <select id="rv-origin" data-feature="github"><option value="">Yours + Fortinet</option><option value="upload">Your playbooks</option><option value="github">Fortinet GitHub</option></select>
         <select id="rv-source"><option value="">Any source</option></select>
         <select id="rv-grade"><option value="">Any grade</option>${["A", "B", "C", "D", "F"].map(g => `<option>${g}</option>`).join("")}</select>
         <select id="rv-verdict"><option value="">Any verdict</option><option>Request changes</option><option>Approve with changes</option><option>Approve</option></select>
         <select id="rv-status"><option value="">Any status</option><option>open</option><option>in review</option><option>changes requested</option><option>approved</option></select>
         <span class="count" id="rv-count"></span>
         <button type="button" id="rv-csv" title="Download the listed reviews">⤓ CSV</button>
-        <button type="button" id="rv-score-gh" data-min-role="admin" title="Score every downloaded Fortinet playbook (no AI, about a minute)">Score Fortinet playbooks</button>
+        <button type="button" id="rv-score-gh" data-min-role="admin" data-feature="github" title="Score every downloaded Fortinet playbook (no AI, about a minute)">Score Fortinet playbooks</button>
       </div>
       <div id="rv-banner"></div>
       <div id="rv-job" style="padding:0 12px"></div>
@@ -242,7 +242,8 @@
       catch (err) { notify(err.message, true); }
     };
     const gh = S.meta.github, banner = [];
-    if (!gh.generated) banner.push(`Fortinet's playbooks haven't been scored yet${hasRole("admin") ? ": use <b>Score Fortinet playbooks</b> (no AI, about a minute)" : ""}.`);
+    if (!document.body.dataset.github) { /* Fortinet scores live in the Fortinet workspace */ }
+    else if (!gh.generated) banner.push(`Fortinet's playbooks haven't been scored yet${hasRole("admin") ? ": use <b>Score Fortinet playbooks</b> (no AI, about a minute)" : ""}.`);
     else if (gh.rules_version !== S.meta.rules_version) banner.push(`Best practices changed since Fortinet playbooks were scored (${esc(agoIso(gh.generated))}); re-score to update.`);
     if (S.rows.some(r => r.origin === "upload" && r.rules_version !== S.meta.rules_version))
       banner.push(`Best practices changed since some of your playbooks were reviewed. <button type="button" id="rv-rescore" data-min-role="analyst">Re-score your playbooks</button>`);
@@ -412,12 +413,14 @@
         <div class="btnrow" style="margin-top:8px">
           <button type="button" class="primary" id="rr-new" data-min-role="analyst">+ Add a best practice</button>
           <button type="button" id="rr-rescore" data-min-role="analyst" title="Re-review your uploaded playbooks with the current rules">↻ Re-score your playbooks</button>
+          <button type="button" id="rr-import" data-min-role="analyst" title="Copy best practices from another workspace">⇩ Import from workspace…</button>
           <button type="button" id="rr-csv">⤓ CSV</button>
           <span class="muted">${R.rules.filter(r => r.enabled).length} of ${R.rules.length} active · rules version ${R.version}</span></div>
         <div id="rr-form"></div></div>
       ${byCat.map(([cat, rules]) => `<div class="rules-cat"><h2>${esc(cat)} <span class="muted">(${rules.length})</span></h2>${rules.map(ruleCard).join("")}</div>`).join("")}`;
     $("rr-new").onclick = () => ruleForm();
     $("rr-rescore").onclick = rescore;
+    $("rr-import").onclick = () => window.openRuleImport(renderRules);
     $("rr-csv").onclick = () => downloadCSV("best-practices", [["id", "ID"], ["title", "Title"], ["category", "Category"], ["severity", "Severity"],
       ["weight", "Weight"], ["enabled", "Enabled"], ["check", "Check"], ["description", "Description"], ["suggestion", "Suggestion"], ["rationale", "Why"],
       ["builtin", "Built-in"], ["created_by", "Added by"]], R.rules);
@@ -443,7 +446,8 @@
     const canEdit = hasRole("analyst");
     return `<div class="rule ${r.enabled ? "" : "off"}" data-id="${esc(r.id)}">
       <div class="head"><code>${esc(r.id)}</code> <b>${esc(r.title)}</b> ${sevPill(r.severity)} <span class="pill">${esc(CHECK_LABELS[r.check] || r.check)}</span>
-        ${r.builtin ? "" : `<span class="pill ok">yours${r.created_by ? ` · ${esc(r.created_by)}` : ""}</span>`}<span class="spacer"></span>
+        ${r.builtin ? "" : `<span class="pill ok">yours${r.created_by ? ` · ${esc(r.created_by)}` : ""}</span>`}
+        ${r.origin ? `<span class="pill" title="Imported ${esc(r.origin.imported || "")} by ${esc(r.origin.by || "")}">from ${esc(r.origin.workspace)}</span>` : ""}<span class="spacer"></span>
         <span class="ctrl">${canEdit ? `<label><input type="checkbox" data-f="enabled" ${r.enabled ? "checked" : ""}> on</label>
           <label>weight <input type="number" data-f="weight" min="0" max="5" step="0.5" value="${r.weight}"></label>
           <select data-f="severity">${Object.keys(S.rules.severities).map(s => `<option ${s === r.severity ? "selected" : ""}>${s}</option>`).join("")}</select>

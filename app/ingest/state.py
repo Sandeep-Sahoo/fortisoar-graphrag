@@ -5,6 +5,7 @@ import json
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
+from ..workspace import path as _ws
 
 STATE = Path(__file__).resolve().parent.parent.parent / "data" / "fortinet" / "ingest_state.json"
 _lock = threading.Lock()
@@ -12,7 +13,7 @@ _lock = threading.Lock()
 
 def load() -> dict:
     try:
-        return json.loads(STATE.read_text())
+        return json.loads(_ws(STATE).read_text())
     except (OSError, ValueError):
         return {}
 
@@ -29,8 +30,8 @@ def record(repos: list[str], mode: str, max_embeddings: int | None, result: dict
             entry.update(last_ingested=now, last_mode=mode, last_cap=max_embeddings)
             extra = (per_repo or {}).get(repo) or {}
             entry["runs"] = ([{"at": now, "mode": mode, "cap": max_embeddings, **(result or {}), **extra}] + entry["runs"])[:10]
-        STATE.parent.mkdir(parents=True, exist_ok=True)
-        STATE.write_text(json.dumps(state, indent=1))
+        _ws(STATE).parent.mkdir(parents=True, exist_ok=True)
+        _ws(STATE).write_text(json.dumps(state, indent=1))
 
 
 def playbook_signatures_from_graph(graph, repos: list[str] | None) -> dict:

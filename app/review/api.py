@@ -82,6 +82,32 @@ def delete_rule(rule_id: str, request: Request):
     return {"ok": True}
 
 
+class RuleImportIn(BaseModel):
+    source: str
+    rules: list[str] = []
+    overrides: list[str] = []
+
+
+def _other_workspace(name: str) -> str:
+    from .. import workspace
+
+    if not workspace.exists(name) or name == workspace.current():
+        raise HTTPException(400, "pick another existing workspace to import from")
+    return name
+
+
+@router.get("/review/rules/import-preview")
+def rules_import_preview(source: str):
+    return rules_mod.import_preview(_other_workspace(source))
+
+
+@router.post("/review/rules/import")
+def rules_import(body: RuleImportIn, request: Request):
+    result = rules_mod.import_rules(_other_workspace(body.source), body.rules, body.overrides, _user(request))
+    _audit(request, "rule.import", body.source, **result)
+    return result
+
+
 @router.post("/review/rules/{rule_id}/reset")
 def reset_rule(rule_id: str, request: Request):
     rules_mod.reset_builtin(rule_id)
@@ -205,7 +231,9 @@ def _rows(source: str) -> list[dict]:
                 rows.append(store.light(r) | {"key": key, "origin": "upload", "source": src["name"], "source_id": src["id"],
                                               "graph_uuid": r.get("graph_uuid"), "copy_of": r.get("copy_of"),
                                               "changes": r.get("changes"), "status": (meta.get(key) or {}).get("status") or "open"})
-    if source in ("all", "github"):
+    from .. import workspace
+
+    if source in ("all", "github") and workspace.has("github"):
         for key, r in store.github_scores().get("playbooks", {}).items():
             rows.append(r | {"key": key, "origin": "github", "source": r.get("repo"), "graph_uuid": r["uuid"],
                              "status": (meta.get(key) or {}).get("status") or "open"})
@@ -262,12 +290,18 @@ def full_review(key: str) -> dict:
         stored = store.source_reviews(sid).get("reviews", {}).get(key, {})
         r.update(key=key, origin="upload", file=f, source=src["name"], source_id=sid,
                  graph_uuid=sources_mod.graph_uuid(sid, original), changes=stored.get("changes"))
-        gh = github_index.raw(original)
+        from .. import workspace
+
+        gh = github_index.raw(original) if workspace.has("github") else None
         if gh:  # it's a copy of a Fortinet playbook: show what you changed
             ref = review_workflow(gh[0], gh[1]["collection"], svc.scrubber, Context(known))
             r["fortinet"] = {"repo": gh[1]["repo"], "name": ref["name"], "score": ref["score"], "grade": ref["grade"],
                              "diff": diff_signatures(ref["signature"], r["signature"])}
     elif key.startswith("g:"):
+        from .. import workspace
+
+        if not workspace.has("github"):
+            raise HTTPException(404, "Fortinet playbook reviews live in the Fortinet workspace")
         found = github_index.raw(key[2:])
         if not found:
             raise HTTPException(404, "playbook not found in the downloaded GitHub repos")

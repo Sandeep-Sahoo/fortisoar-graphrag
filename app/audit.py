@@ -12,7 +12,9 @@ _lock = threading.Lock()
 
 
 def record(user: str | None, action: str, target: str = "", **details) -> None:
-    entry = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "user": user or "-",
+    from .workspace import current
+
+    entry = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "user": user or "-", "ws": current(),
              "action": action, "target": str(target)[:300]}
     if details:
         entry["details"] = {k: v for k, v in details.items() if v not in (None, "", [], {})}

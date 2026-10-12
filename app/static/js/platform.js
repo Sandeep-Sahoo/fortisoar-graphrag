@@ -421,73 +421,97 @@ window.afterSettings = () => {
   const nav = $("settings-nav");
   if (!nav.querySelector("[data-platform]")) {
     nav.insertAdjacentHTML("beforeend", `<h2 data-platform>Access &amp; usage</h2>
-      <button type="button" data-target="s-users">Users &amp; roles</button><button type="button" data-target="s-audit">Audit log</button>
-      <button type="button" data-target="s-usage">Usage &amp; caches</button><button type="button" data-target="s-sync">Scheduled sync</button>`);
+      <button type="button" data-target="s-users" data-super>Users &amp; roles</button><button type="button" data-target="s-audit">Audit log</button>
+      <button type="button" data-target="s-usage" data-super>Usage &amp; caches</button><button type="button" data-target="s-workspaces">Workspaces</button>
+      <button type="button" data-target="s-sync" data-super>Scheduled sync</button>`);
     nav.querySelectorAll("button[data-target]").forEach(b => b.onclick = () => document.getElementById(b.dataset.target)?.scrollIntoView({ behavior: "smooth" }));
   }
   if (!document.getElementById("s-users")) {
     $("settings").insertAdjacentHTML("beforeend", `
+      <div data-super>
       <h2 id="s-users">Users &amp; roles</h2>
-      <p class="lead"><b>admin</b>: everything · <b>analyst</b>: AI answers / explanations, uploads, reviews, best practices · <b>viewer</b>: read-only, graph-only chat. The .env account is always admin.</p>
+      <p class="lead">Each person gets a role <b>per company</b>: <b>admin</b> (that company's settings, operations and audit) · <b>analyst</b> (AI answers, uploads, reviews,
+        best practices, designs) · <b>viewer</b> (read-only, graph-only chat) · or no access. <b>Super-admins</b> have every role everywhere and manage General
+        settings, users, logs and caches. The .env account is always a super-admin.</p>
       <div id="users-box"><div class="muted">Loading…</div></div>
+      </div>
       <h2 id="s-audit">Audit log</h2>
       <p class="lead">Who signed in, changed settings, ran jobs, uploaded or reviewed playbooks, used the AI. Values of settings and secrets are never recorded.</p>
       <div class="btnrow"><input id="audit-user" placeholder="user" style="width:120px"><input id="audit-action" placeholder="action (e.g. job, review, auth)" style="width:200px">
         <input id="audit-q" placeholder="text" style="flex:1;min-width:120px"><button type="button" id="audit-refresh">Refresh</button><button type="button" id="audit-csv">⤓ CSV</button></div>
       <div id="audit-box" style="max-height:420px;overflow:auto;margin-top:8px"></div>
+      <div data-super>
       <h2 id="s-usage">Usage &amp; caches</h2>
       <p class="lead">Daily limits are set above (AI models: <i>Answer requests per day</i>, <i>Embeddings per day</i>, <i>Stop at the daily limits</i>).</p>
       <div id="usage-box"></div>
+      </div>
+      <h2 id="s-workspaces">Workspaces</h2>
+      <p class="lead">Each workspace has its own Neo4j database and data folder. Users, the audit log, usage limits and the AI caches are shared.
+        Switch with the selector in the header (your choice is remembered in this browser).</p>
+      <div id="ws-box"><div class="muted">Loading…</div></div>
+      <div data-super>
       <h2 id="s-sync">Scheduled sync</h2>
       <p class="lead">Set <i>Scheduled sync</i> under Data sources. The sync only talks to GitHub (and your connected Git repos), never to the AI model.</p>
-      <div id="sync-box"></div>`);
+      <div id="sync-box"></div>
+      </div>`);
     ["audit-user", "audit-action", "audit-q"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") loadAudit(); }));
     $("audit-refresh").onclick = loadAudit;
-    $("audit-csv").onclick = () => downloadCSV("audit-log", [["at", "Time"], ["user", "User"], ["action", "Action"], ["target", "Target"], ["details", "Details"]], window.AUDIT || []);
+    $("audit-csv").onclick = () => downloadCSV("audit-log", [["at", "Time"], ["user", "User"], ["ws", "Workspace"], ["action", "Action"], ["target", "Target"], ["details", "Details"]], window.AUDIT || []);
   }
-  loadUsers(); loadAudit(); loadUsageBox(); loadSyncBox();
+  if (window.ME?.superadmin) { loadUsers(); loadUsageBox(); loadSyncBox(); }
+  loadAudit(); loadWorkspacesBox();
 };
 
 async function loadUsers() {
   const box = $("users-box");
   let data;
   try { data = await api("/admin/users"); } catch (err) { box.innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
-  const roleSel = (u) => `<select data-role-of="${esc(u.username)}">${data.roles.map(r => `<option ${r === u.role ? "selected" : ""}>${r}</option>`).join("")}</select>`;
-  box.innerHTML = `<table class="grid"><thead><tr><th>User</th><th>Role</th><th>Status</th><th>Last sign-in</th><th>Created</th><th></th></tr></thead><tbody>
-    <tr><td><b>${esc(data.builtin_admin)}</b> <span class="sub">(.env)</span></td><td>admin</td><td>active</td><td>–</td><td>–</td><td></td></tr>
-    ${data.users.map(u => `<tr><td><b>${esc(u.username)}</b></td><td>${roleSel(u)}</td>
+  const W = data.workspaces;
+  const roleSel = (attr, user, ws, value) => `<select ${attr}="${esc(user)}" data-ws="${esc(ws)}">${["none", ...data.roles].map(r =>
+    `<option value="${r}" ${r === (value || "none") ? "selected" : ""}>${r === "none" ? "— no access" : r}</option>`).join("")}</select>`;
+  box.innerHTML = `<table class="grid"><thead><tr><th>User</th><th>Super-admin</th>${W.map(w => `<th>${esc(w.label)}</th>`).join("")}<th>Status</th><th>Last sign-in</th><th></th></tr></thead><tbody>
+    <tr><td><b>${esc(data.builtin_admin)}</b> <span class="sub">(.env)</span></td><td>✓</td>${W.map(() => `<td>admin</td>`).join("")}<td>active</td><td>–</td><td></td></tr>
+    ${data.users.map(u => `<tr><td><b>${esc(u.username)}</b><div class="sub">by ${esc(u.created_by || "–")} · ${esc(fmtWhen(u.created))}</div></td>
+      <td><input type="checkbox" data-super-of="${esc(u.username)}" ${u.superadmin ? "checked" : ""} aria-label="Super-admin"></td>
+      ${W.map(w => `<td>${u.superadmin ? `<span class="sub">admin</span>` : roleSel("data-role-of", u.username, w.id, u.access[w.id])}</td>`).join("")}
       <td>${u.disabled ? `<span class="pill warn">disabled</span>` : "active"}</td><td>${u.last_login ? esc(fmtWhen(u.last_login)) : "never"}</td>
-      <td>${esc(fmtWhen(u.created))}<div class="sub">by ${esc(u.created_by || "–")}</div></td>
       <td><div class="btnrow"><button type="button" data-pw="${esc(u.username)}">Reset password</button>
         <button type="button" data-toggle="${esc(u.username)}" data-disabled="${u.disabled}">${u.disabled ? "Enable" : "Disable"}</button>
         <button type="button" data-del="${esc(u.username)}">Delete</button></div></td></tr>`).join("")}</tbody></table>
     <h3 style="font-size:13px;margin:14px 0 6px">Add a user</h3>
-    <div class="form-grid" style="max-width:720px"><label>Username<input id="nu-name" autocomplete="off"></label>
-      <label>Role<select id="nu-role">${data.roles.map(r => `<option ${r === "viewer" ? "selected" : ""}>${r}</option>`).join("")}</select></label>
+    <div class="form-grid" style="max-width:860px"><label>Username<input id="nu-name" autocomplete="off"></label>
       <label>Password (min 8)<input id="nu-pw" type="password" autocomplete="new-password"></label>
+      ${W.map(w => `<label>${esc(w.label)} role${roleSel("data-new-role", "_new", w.id, "none")}</label>`).join("")}
+      <label><span><input type="checkbox" id="nu-super"> super-admin (everything)</span></label>
       <label style="justify-content:flex-end"><button type="button" class="primary" id="nu-add">Add user</button></label></div>
-    <div class="muted" style="margin-top:6px">Share the password with the person directly; they can't change it themselves yet.</div>`;
-  box.querySelectorAll("select[data-role-of]").forEach(s => s.onchange = async () => {
-    try { await post(`/admin/users/${enc(s.dataset.roleOf)}`, { username: s.dataset.roleOf, role: s.value }, "PATCH"); notify("Role updated."); }
-    catch (err) { notify(err.message, true); loadUsers(); }
+    <div class="muted" style="margin-top:6px">Share the password with the person directly. A user only sees the companies they have a role in.</div>`;
+  const patch = async (name, body, msg) => {
+    try { await post(`/admin/users/${enc(name)}`, { username: name, ...body }, "PATCH"); notify(msg); } catch (err) { notify(err.message, true); }
+    loadUsers();
+  };
+  box.querySelectorAll("select[data-role-of]").forEach(sel => sel.onchange = () => {
+    const name = sel.dataset.roleOf, access = {};
+    box.querySelectorAll(`select[data-role-of="${CSS.escape(name)}"]`).forEach(x => { access[x.dataset.ws] = x.value; });
+    patch(name, { access }, "Access updated.");
   });
-  box.querySelectorAll("[data-pw]").forEach(b => b.onclick = async () => {
+  box.querySelectorAll("[data-super-of]").forEach(cb => cb.onchange = () => {
+    if (!cb.checked || confirm(`Make ${cb.dataset.superOf} a super-admin (all companies, users, General settings)?`)) patch(cb.dataset.superOf, { superadmin: cb.checked }, "Updated.");
+    else cb.checked = false;
+  });
+  box.querySelectorAll("[data-pw]").forEach(b => b.onclick = () => {
     const pw = prompt(`New password for ${b.dataset.pw} (min 8 characters)`);
-    if (!pw) return;
-    try { await post(`/admin/users/${enc(b.dataset.pw)}`, { username: b.dataset.pw, password: pw }, "PATCH"); notify("Password changed."); }
-    catch (err) { notify(err.message, true); }
+    if (pw) patch(b.dataset.pw, { password: pw }, "Password changed.");
   });
-  box.querySelectorAll("[data-toggle]").forEach(b => b.onclick = async () => {
-    try { await post(`/admin/users/${enc(b.dataset.toggle)}`, { username: b.dataset.toggle, disabled: b.dataset.disabled !== "true" }, "PATCH"); loadUsers(); }
-    catch (err) { notify(err.message, true); }
-  });
+  box.querySelectorAll("[data-toggle]").forEach(b => b.onclick = () => patch(b.dataset.toggle, { disabled: b.dataset.disabled !== "true" }, "Updated."));
   box.querySelectorAll("[data-del]").forEach(b => b.onclick = async () => {
     if (!confirm(`Delete user ${b.dataset.del}?`)) return;
     try { await api(`/admin/users/${enc(b.dataset.del)}`, { method: "DELETE" }); loadUsers(); } catch (err) { notify(err.message, true); }
   });
   $("nu-add").onclick = async () => {
+    const access = {};
+    box.querySelectorAll("select[data-new-role]").forEach(x => { access[x.dataset.ws] = x.value; });
     try {
-      await post("/admin/users", { username: $("nu-name").value.trim(), role: $("nu-role").value, password: $("nu-pw").value });
+      await post("/admin/users", { username: $("nu-name").value.trim(), password: $("nu-pw").value, access, superadmin: $("nu-super").checked });
       notify("User added."); loadUsers();
     } catch (err) { notify(err.message, true); }
   };
@@ -497,10 +521,10 @@ async function loadAudit() {
   const box = $("audit-box");
   const qs = new URLSearchParams({ limit: 300, user: $("audit-user").value.trim(), action: $("audit-action").value.trim(), q: $("audit-q").value.trim() });
   try { window.AUDIT = (await api(`/admin/audit?${qs}`)).entries; } catch (err) { box.innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
-  box.innerHTML = `<table class="grid"><thead><tr><th>Time</th><th>User</th><th>Action</th><th>Target</th><th>Details</th></tr></thead><tbody>
-    ${window.AUDIT.map(e => `<tr><td>${esc(fmtWhen(e.at))}</td><td>${esc(e.user)}</td><td><code>${esc(e.action)}</code></td><td>${esc(e.target || "")}</td>
+  box.innerHTML = `<table class="grid"><thead><tr><th>Time</th><th>User</th><th>Workspace</th><th>Action</th><th>Target</th><th>Details</th></tr></thead><tbody>
+    ${window.AUDIT.map(e => `<tr><td>${esc(fmtWhen(e.at))}</td><td>${esc(e.user)}</td><td>${esc(e.ws || "fortinet")}</td><td><code>${esc(e.action)}</code></td><td>${esc(e.target || "")}</td>
       <td class="sub">${esc(e.details ? Object.entries(e.details).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`).join(" · ") : "")}</td></tr>`).join("")
-    || `<tr><td colspan="5" class="muted">No entries yet.</td></tr>`}</tbody></table>`;
+    || `<tr><td colspan="6" class="muted">No entries yet.</td></tr>`}</tbody></table>`;
 }
 
 async function loadUsageBox() {
@@ -535,13 +559,91 @@ async function loadSyncBox() {
   } catch (err) { box.innerHTML = `<div class="error">${esc(err.message)}</div>`; }
 }
 
+/* ---------------------------------------------------------------- workspaces */
+async function initWorkspaces(me) {
+  const ws = me.workspace || { id: "fortinet", features: ["github"] };
+  window.WORKSPACE = ws;
+  document.documentElement.style.setProperty("--ws-color", ws.color || "var(--accent)");
+  document.body.dataset.workspace = ws.id;
+  if ((ws.features || []).includes("github")) document.body.dataset.github = "1"; else delete document.body.dataset.github;
+  document.querySelectorAll('.nav a[data-view="github"]').forEach(a => { if (!(ws.features || []).includes("github")) a.hidden = true; });
+  const sel = $("ws-select");
+  try {
+    const list = await api("/workspaces");
+    sel.innerHTML = list.workspaces.map(w => `<option value="${esc(w.id)}" ${w.id === ws.id ? "selected" : ""} title="${esc(w.description)}">${esc(w.label)}</option>`).join("");
+  } catch { sel.innerHTML = `<option>${esc(ws.label || ws.id)}</option>`; }
+  sel.onchange = () => {
+    document.cookie = `graphrag_ws=${encodeURIComponent(sel.value)}; path=/; max-age=31536000; samesite=lax`;
+    try { localStorage.removeItem("graphrag.chat"); } catch { /* per-workspace chats */ }
+    const view = location.hash.replace(/^#/, "").split("/")[0];
+    location.hash = ["home", "browse", "chat", "review", "insights", "develop", "guide", "settings"].includes(view) ? `#${view}` : "#home";
+    location.reload();
+  };
+  if (location.hash.startsWith("#github") && !(ws.features || []).includes("github")) location.hash = "#home";
+}
+
+/* rule import (Review → Best practices) */
+window.openRuleImport = async onDone => {
+  const list = (await api("/workspaces")).workspaces.filter(w => w.id !== window.WORKSPACE?.id);
+  if (!list.length) { notify("There is no other workspace to import from.", true); return; }
+  const dlg = document.createElement("div");
+  dlg.className = "usage-pop";
+  dlg.style.cssText = "top:70px;right:auto;left:50%;transform:translateX(-50%);width:min(680px,calc(100vw - 32px));max-height:80vh;overflow:auto";
+  dlg.innerHTML = `<h3>Import best practices</h3>
+    <div class="muted">Copies selected rules (and built-in rule settings) from another workspace. Nothing else is shared. Re-importing updates rules instead of duplicating them.</div>
+    <div class="btnrow" style="margin:8px 0">From <select id="ri-from">${list.map(w => `<option value="${esc(w.id)}">${esc(w.label)}</option>`).join("")}</select></div>
+    <div id="ri-body" class="muted">Loading…</div>
+    <div class="btnrow" style="margin-top:10px"><button type="button" class="primary" id="ri-go">Import selected</button><span style="flex:1"></span><button type="button" id="ri-close">Close</button></div>`;
+  document.body.appendChild(dlg);
+  const load = async () => {
+    const p = await api(`/review/rules/import-preview?source=${enc($("ri-from").value)}`).catch(err => ({ error: err.message }));
+    if (p.error) { $("ri-body").innerHTML = `<div class="error">${esc(p.error)}</div>`; return; }
+    const pill = st => `<span class="pill ${st === "new" ? "ok" : st === "changed" ? "warn" : ""}">${st}</span>`;
+    $("ri-body").innerHTML = (p.custom.length ? `<h3 style="margin-top:8px">Custom rules (${p.custom.length})</h3>` + p.custom.map(r => `<label style="display:flex;gap:8px;align-items:flex-start;margin:4px 0">
+        <input type="checkbox" data-rule="${esc(r.id)}" ${r.import_status !== "same" ? "checked" : ""}>
+        <span>${pill(r.import_status)} <b>${esc(r.title)}</b> ${sevPill(r.severity)} <span class="sub">${esc(r.category)} · ${esc(r.check)}</span></span></label>`).join("") : `<div class="muted">No custom rules there.</div>`)
+      + (p.overrides.length ? `<h3 style="margin-top:8px">Built-in rule settings (${p.overrides.length})</h3>` + p.overrides.map(o => `<label style="display:flex;gap:8px;margin:4px 0">
+        <input type="checkbox" data-ov="${esc(o.id)}" ${o.import_status !== "same" ? "checked" : ""}>
+        <span>${pill(o.import_status)} <code>${esc(o.id)}</code> ${esc(o.title)} <span class="sub">${esc(Object.entries(o.theirs).map(([k, v]) => `${k}: ${v}`).join(", "))}</span></span></label>`).join("") : "");
+  };
+  $("ri-from").onchange = load;
+  $("ri-close").onclick = () => dlg.remove();
+  $("ri-go").onclick = async () => {
+    const rules = [...dlg.querySelectorAll("[data-rule]:checked")].map(x => x.dataset.rule);
+    const overrides = [...dlg.querySelectorAll("[data-ov]:checked")].map(x => x.dataset.ov);
+    if (!rules.length && !overrides.length) { notify("Select something to import.", true); return; }
+    try {
+      const r = await post("/review/rules/import", { source: $("ri-from").value, rules, overrides });
+      notify(`Imported: ${r.added} new, ${r.updated} updated, ${r.overrides} built-in setting(s). Re-score to apply.`);
+      dlg.remove(); onDone?.();
+    } catch (err) { notify(err.message, true); }
+  };
+  load();
+};
+
+/* settings: workspaces */
+async function loadWorkspacesBox() {
+  const box = document.getElementById("ws-box");
+  if (!box) return;
+  try {
+    const d = await api("/admin/workspaces");
+    box.innerHTML = `<table class="grid"><thead><tr><th>Workspace</th><th>Database</th><th>Data folder</th><th>Contents</th></tr></thead><tbody>
+      ${d.workspaces.map(w => `<tr><td><b>${esc(w.label)}</b>${w.id === window.WORKSPACE?.id ? ` <span class="pill ok">current</span>` : ""}<div class="sub">${esc(w.features.join(", ") || "no Fortinet features")}</div></td>
+        <td><code>${esc(w.neo4j_uri)}</code><div class="sub">${w.ok ? "connected" : `<span class="error">${esc(w.error || "unreachable")}</span>`}</div></td>
+        <td class="sub">${esc(w.data_dir)}</td>
+        <td class="sub">${w.graph ? esc(Object.entries(w.graph).filter(([, n]) => n).map(([k, n]) => `${k} ${n}`).join(" · ") || "empty") : "–"}</td></tr>`).join("")}</tbody></table>`;
+  } catch (err) { box.innerHTML = `<div class="error">${esc(err.message)}</div>`; }
+}
+
 /* ---------------------------------------------------------------- boot */
 window.initPlatform = me => {
+  initWorkspaces(me);
   refreshUsage();
   clearInterval(usageTimer);
   usageTimer = setInterval(() => { if (!document.hidden) refreshUsage(); }, 30000);
   loadSavedSearches();
   renderFilters();
+  if (me.superadmin) document.body.dataset.super = "1"; else delete document.body.dataset.super;
   if (me.role !== "admin") document.querySelectorAll('.nav a[data-view="settings"], .nav a[data-view="github"]').forEach(a => a.hidden = true);
   if (!me.can_use_ai) {
     const cb = $("graph-only");

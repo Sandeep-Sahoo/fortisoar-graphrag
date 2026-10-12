@@ -51,8 +51,13 @@ def status(settings) -> dict:
 
 
 def _run(cmd: list[str], progress, timeout: int) -> tuple[int, str]:
+    import os
+
+    from .workspace import DEFAULT
+
     progress("$ " + " ".join(cmd[1:]))
-    proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=timeout)
+    env = {**os.environ, "APP_WORKSPACE": DEFAULT}  # GitHub content always goes to the Fortinet workspace
+    proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, timeout=timeout, env=env)
     out = (proc.stdout + proc.stderr).strip()
     for line in out.splitlines()[-15:]:
         progress("  " + line)
@@ -70,26 +75,34 @@ def run_sync(svc, force: bool = False, progress=print) -> dict:
     result["fetch"] = "ok" if code == 0 else f"exit {code}"
     if s.sync_auto_ingest:
         from .github_catalog import repo_table
+        from .services import get_services
+        from .workspace import DEFAULT, using
 
-        stale = [r["repo"] for r in repo_table(svc)["repos"] if r["stale"]]
+        with using(DEFAULT):
+            stale = [r["repo"] for r in repo_table(get_services(DEFAULT))["repos"] if r["stale"]]
         result["stale_repos"] = len(stale)
         if stale:
             progress(f"re-ingesting {len(stale)} changed repo(s) with 0 new embeddings…")
             code, _ = _run([sys.executable, "-m", "app.cli", "ingest-fortinet", "--repos", ",".join(stale),
                             "--max-embeddings", "0", "--mode", "sync"], progress, 7200)
             result["ingest"] = "ok" if code == 0 else f"exit {code}"
-    if s.sync_sources:
+    if s.sync_sources:  # connected Git sources of every workspace
         from .review import sources
+        from .services import get_services
+        from .workspace import registry, using
 
         synced = {}
-        for src in sources.sources():
-            if src["kind"] != "git":
-                continue
-            try:
-                summary = sources.sync(src["id"], svc)["summary"]
-                synced[src["name"]] = "unchanged" if summary.get("unchanged") else f"{summary['playbooks']} playbooks"
-            except Exception as exc:
-                synced[src["name"]] = f"error: {str(exc)[:120]}"
+        for ws_name in registry():
+            with using(ws_name):
+                for src in sources.sources():
+                    if src["kind"] != "git":
+                        continue
+                    label = f"{ws_name}/{src['name']}"
+                    try:
+                        summary = sources.sync(src["id"], get_services(ws_name))["summary"]
+                        synced[label] = "unchanged" if summary.get("unchanged") else f"{summary['playbooks']} playbooks"
+                    except Exception as exc:
+                        synced[label] = f"error: {str(exc)[:120]}"
         result["sources"] = synced
     result["finished"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     _save({"last_run": started, "last_result": result})

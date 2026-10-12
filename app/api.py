@@ -52,18 +52,35 @@ async def require_login(request: Request, call_next):
 
     from .auth import COOKIE
 
-    from .users import allowed, role_of
+    from . import workspace
+    from .users import account, allowed, role_in, workspaces_for
 
     if request.url.path in PUBLIC_PATHS:
         return await call_next(request)
     user = sessions().user(request.cookies.get(COOKIE))
-    role = role_of(user)
-    if user and role:
-        if not allowed(role, request.method, request.url.path):
-            log.warning("user %r (%s) denied %s %s", user, role, request.method, request.url.path)
-            return JSONResponse(status_code=403, content={"detail": f"Your role ({role}) can't do this. Ask an admin."})
-        request.state.user, request.state.role = user, role
-        return await call_next(request)
+    acc = account(user)
+    if user and acc:
+        # the company / workspace this browser selected; fall back to one the user may use
+        allowed_ws = workspaces_for(acc)
+        if not allowed_ws:
+            return JSONResponse(status_code=403, content={"detail": "Your account has no company assigned. Ask an admin."})
+        ws = request.headers.get("x-workspace") or request.cookies.get(workspace.COOKIE)
+        if ws not in allowed_ws:
+            ws = workspace.DEFAULT if workspace.DEFAULT in allowed_ws else allowed_ws[0]
+        role = role_in(acc, ws)
+        if not allowed(role, request.method, request.url.path, acc.get("superadmin")):
+            log.warning("user %r (%s in %s) denied %s %s", user, role, ws, request.method, request.url.path)
+            return JSONResponse(status_code=403, content={"detail": f"Your role in this company ({role}) can't do this. Ask an admin."})
+        request.state.user, request.state.role, request.state.account = user, role, acc
+        token = workspace.set_current(ws)
+        request.state.workspace = workspace.current()
+        try:
+            if request.url.path.startswith("/github/") and not workspace.has("github"):
+                return JSONResponse(status_code=404, content={
+                    "detail": f"The GitHub page belongs to the Fortinet workspace; you're in {workspace.info()['label']}."})
+            return await call_next(request)
+        finally:
+            workspace.reset(token)
     if request.method == "GET" and "text/html" in request.headers.get("accept", ""):
         return RedirectResponse("/login", status_code=303)
     return JSONResponse(status_code=401, content={"detail": "not logged in"})
@@ -169,8 +186,15 @@ def me(request: Request):
     s = get_services().settings
     from .users import can_use_ai
 
+    from . import workspace
+
     role = current_role(request)
+    from .users import workspaces_for
+
+    acc = getattr(request.state, "account", None) or {}
     return {"user": sessions().user(request.cookies.get(COOKIE)), "role": role, "can_use_ai": can_use_ai(role),
+            "workspace": workspace.info(), "superadmin": bool(acc.get("superadmin")), "access": acc.get("access") or {},
+            "workspaces": workspaces_for(acc),
             "default_password": (s.app_username, s.app_password) == ("admin", "admin")}
 
 
@@ -197,8 +221,12 @@ def map_exception(request: Request, exc: Exception) -> JSONResponse:
     from neo4j.exceptions import AuthError, ServiceUnavailable, SessionExpired
 
     if isinstance(exc, (ServiceUnavailable, SessionExpired)):
-        log.error("Neo4j unavailable on %s %s: %s", request.method, request.url.path, exc)
-        return _error(503, "The graph database is unavailable. Check that Neo4j is running (docker compose up -d neo4j).")
+        from . import workspace
+
+        w = workspace.info(getattr(request.state, "workspace", None) or workspace.current())
+        log.error("Neo4j (%s workspace) unavailable on %s %s: %s", w["id"], request.method, request.url.path, exc)
+        return _error(503, f"The {w.get('label', w['id'])} workspace's graph database isn't reachable. "
+                           f"Start it with: docker compose up -d {w.get('service') or 'neo4j'}")
     if isinstance(exc, AuthError):
         log.error("Neo4j authentication failed: %s", exc)
         return _error(503, "The graph database rejected the credentials. Check NEO4J_USER / NEO4J_PASSWORD in Settings.")
@@ -259,7 +287,12 @@ def health():
     try:
         counts = svc.graph.stats()
     except Exception as exc:
-        raise HTTPException(503, f"neo4j unavailable: {exc}")
+        from . import workspace
+
+        w = workspace.info()
+        raise HTTPException(503, f"The {w.get('label', w['id'])} workspace's graph database isn't reachable ({svc.settings.neo4j_uri}). "
+                                 f"Start it with: docker compose up -d {w.get('service') or 'neo4j'}. Pages that don't need the graph "
+                                 f"(Review rules, Develop, Settings) still work. Detail: {str(exc).splitlines()[0][:160]}")
     return {"config": config, "graph": counts}
 
 
@@ -355,6 +388,7 @@ def get_collection(name: str):
 
 class SettingsUpdate(BaseModel):
     values: dict[str, str | bool | int | float | None]
+    scope: str = "general"
 
 
 class JobStart(BaseModel):
@@ -371,28 +405,57 @@ class LinkReview(BaseModel):
     min_confidence: float = 0.0
 
 
-@app.get("/admin/settings")
-def admin_settings():
-    from .settings_store import describe
+def _settings_scopes(request: Request) -> list[dict]:
+    """Settings tabs this user may open: General (super-admin) and each company they administer."""
+    from . import workspace
 
-    svc = get_services()
-    return {"fields": describe(svc.settings), "config": svc.settings.describe(), "env_file": ".env"}
+    acc = getattr(request.state, "account", None) or {}
+    out = [{"id": "general", "label": "General", "description": "Applies to every company: AI models, keys, limits, sign-in, retrieval"}] \
+        if acc.get("superadmin") else []
+    for ws in _admin_workspaces(request):
+        w = workspace.info(ws)
+        out.append({"id": ws, "label": w.get("label", ws), "color": w.get("color"),
+                    "description": f"{w.get('label', ws)} only: database, company name, redaction, Git token" + (", GitHub sync" if "github" in (w.get("features") or []) else "")})
+    return out
+
+
+def _check_scope(request: Request, scope: str) -> None:
+    if scope not in {s["id"] for s in _settings_scopes(request)}:
+        raise HTTPException(403, "You can't manage these settings. General settings need a super-admin; company settings need that company's admin.")
+
+
+@app.get("/admin/settings/scopes")
+def admin_settings_scopes(request: Request):
+    return {"scopes": _settings_scopes(request)}
+
+
+@app.get("/admin/settings")
+def admin_settings(request: Request, scope: str = "general"):
+    from . import workspace
+    from .settings_store import describe_scope
+
+    _check_scope(request, scope)
+    svc = get_services(scope if workspace.exists(scope) else None)
+    return {"scope": scope, "fields": describe_scope(svc.settings, scope), "config": svc.settings.describe(), "env_file": ".env"}
 
 
 @app.post("/admin/settings")
 def admin_update_settings(body: SettingsUpdate, request: Request):
     from .settings_store import apply
 
+    _check_scope(request, body.scope)
+    from .settings_store import apply_scope
+
     try:
         values = {k: ("true" if v is True else "false" if v is False else v) for k, v in body.values.items()}
-        result = apply(values)
+        result = apply_scope(body.scope, values)
     except ValueError as exc:
         log.warning("settings change rejected (%s): %s", ", ".join(sorted(body.values)), str(exc).replace("\n", " "))
         raise HTTPException(400, str(exc))
     log.info("settings changed: %s", ", ".join(result["changed"]) or "nothing")  # keys only, never values
     from . import audit
 
-    audit.record(current_user(request), "settings.change", ", ".join(result["changed"]))
+    audit.record(current_user(request), "settings.change", ", ".join(result["changed"]), scope=body.scope)
     if "LOG_LEVEL" in result["changed"]:
         setup_logging(get_services().settings.log_level)
     return {**result, "config": get_services().settings.describe()}
@@ -419,8 +482,12 @@ def github_repo(repo: str):
 def admin_operations():
     from .jobs import JOBS, OPERATIONS
 
+    from . import workspace
+    from .jobs import GITHUB_ONLY
+
     return {"operations": [{"name": k, "title": v[0], "description": v[2], "destructive": v[3]} for k, v in OPERATIONS.items()
-                            if k not in ("ingest_repos", "continue_repos", "embed_today")],  # run from their pages
+                            if k not in ("ingest_repos", "continue_repos", "embed_today")  # run from their pages
+                            and (workspace.has("github") or k not in GITHUB_ONLY)],
             "jobs": JOBS.list(), "running": JOBS.public(JOBS.running(), tail=60) if JOBS.running() else None}
 
 
@@ -428,9 +495,14 @@ def admin_operations():
 def admin_start_job(body: JobStart, request: Request):
     from .jobs import JOBS, OPERATIONS
 
+    from . import workspace
+    from .jobs import GITHUB_ONLY
+
     op = OPERATIONS.get(body.operation)
     if not op:
         raise HTTPException(404, "unknown operation")
+    if body.operation in GITHUB_ONLY and not workspace.has("github"):
+        raise HTTPException(400, f"“{op[0]}” works on Fortinet's GitHub content: switch to the Fortinet workspace.")
     if body.operation == "continue_repos" and not str(body.options.get("max_embeddings", "")).isdigit():
         raise HTTPException(400, "continue needs a max_embeddings cap (a whole number)")
     if body.operation in ("ingest_repos", "continue_repos"):
@@ -507,6 +579,49 @@ def admin_test(target: str, request: Request):
     return {"ok": True, "detail": detail, "ms": round((_t.time() - t0) * 1000)}
 
 
+# ------------------------------------------------------------ workspaces
+
+@app.get("/workspaces")
+def list_workspaces(request: Request):
+    from . import workspace
+    from .users import workspaces_for
+
+    mine = set(workspaces_for(getattr(request.state, "account", None)))
+    return {"current": workspace.current(), "workspaces": [
+        {"id": k, "label": v.get("label", k), "description": v.get("description", ""), "color": v.get("color"),
+         "features": v.get("features") or []} for k, v in workspace.registry().items() if k in mine]}
+
+
+def _admin_workspaces(request: Request) -> list[str]:
+    """Workspaces this user administers (super-admin: all)."""
+    from .users import workspaces_for
+
+    acc = getattr(request.state, "account", None) or {}
+    return [ws for ws in workspaces_for(acc) if acc.get("superadmin") or acc["access"].get(ws) == "admin"]
+
+
+@app.get("/admin/workspaces")
+def admin_workspaces(request: Request):
+    """Connection status and contents of the workspaces this user administers."""
+    from . import workspace
+
+    out = []
+    mine = set(_admin_workspaces(request))
+    for k, v in workspace.registry().items():
+        if k not in mine:
+            continue
+        svc = get_services(k)
+        row = {"id": k, "label": v.get("label", k), "neo4j_uri": svc.settings.neo4j_uri, "data_dir": str(workspace.data_dir(k)),
+               "features": v.get("features") or []}
+        try:
+            row["graph"] = {r["label"]: r["count"] for r in svc.graph.stats()}
+            row["ok"] = True
+        except Exception as exc:
+            row["ok"], row["error"] = False, str(exc).splitlines()[0][:200]
+        out.append(row)
+    return {"workspaces": out}
+
+
 # ------------------------------------------------------------ usage, users, audit
 
 @app.get("/usage")
@@ -534,14 +649,18 @@ class UserIn(BaseModel):
     password: str | None = None
     role: str | None = None
     disabled: bool | None = None
+    access: dict[str, str | None] | None = None   # {company: viewer|analyst|admin|none}
+    superadmin: bool | None = None
 
 
 @app.get("/admin/users")
 def admin_users():
+    from . import workspace
     from .users import ROLES, list_users
 
     s = get_services().settings
-    return {"users": list_users(), "roles": ROLES, "builtin_admin": s.app_username}
+    return {"users": list_users(), "roles": ROLES, "builtin_admin": s.app_username,
+            "workspaces": [{"id": k, "label": v.get("label", k)} for k, v in workspace.registry().items()]}
 
 
 @app.post("/admin/users")
@@ -549,10 +668,11 @@ def admin_create_user(body: UserIn, request: Request):
     from . import audit, users
 
     try:
-        result = users.create(body.username, body.password or "", body.role or "viewer", current_user(request))
+        result = users.create(body.username, body.password or "", body.role, current_user(request),
+                              access=body.access, superadmin=body.superadmin)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    audit.record(current_user(request), "user.create", body.username, role=result["role"])
+    audit.record(current_user(request), "user.create", body.username, access=result["access"], superadmin=result["superadmin"])
     return result
 
 
@@ -560,16 +680,17 @@ def admin_create_user(body: UserIn, request: Request):
 def admin_update_user(username: str, body: UserIn, request: Request):
     from . import audit, users
 
-    if username == current_user(request) and (body.disabled or (body.role and body.role != "admin")):
+    if username == current_user(request) and (body.disabled or (body.role and body.role != "admin") or body.superadmin is False):
         raise HTTPException(400, "you can't demote or disable your own account")
     try:
-        result = users.update(username, current_user(request), role=body.role, password=body.password, disabled=body.disabled)
+        result = users.update(username, current_user(request), role=body.role, password=body.password, disabled=body.disabled,
+                              access=body.access, superadmin=body.superadmin)
     except KeyError:
         raise HTTPException(404, "no such user")
     except ValueError as exc:
         raise HTTPException(400, str(exc))
-    audit.record(current_user(request), "user.update", username, role=body.role, disabled=body.disabled,
-                 password_changed=bool(body.password) or None)
+    audit.record(current_user(request), "user.update", username, role=body.role, disabled=body.disabled, access=body.access,
+                 superadmin=body.superadmin, password_changed=bool(body.password) or None)
     return result
 
 
@@ -586,10 +707,16 @@ def admin_delete_user(username: str, request: Request):
 
 
 @app.get("/admin/audit")
-def admin_audit(limit: int = 300, user: str = "", action: str = "", q: str = ""):
+def admin_audit(request: Request, limit: int = 300, user: str = "", action: str = "", q: str = ""):
+    """Super-admins see everything; company admins see their companies' entries."""
     from . import audit
 
-    return {"entries": audit.read(max(1, min(limit, 5000)), user, action, q)}
+    acc = getattr(request.state, "account", None) or {}
+    entries = audit.read(max(1, min(limit, 5000)) * (1 if acc.get("superadmin") else 5), user, action, q)
+    if not acc.get("superadmin"):
+        mine = set(_admin_workspaces(request))
+        entries = [e for e in entries if e.get("ws", "fortinet") in mine][:limit]
+    return {"entries": entries}
 
 
 class ClientError(BaseModel):
@@ -741,6 +868,10 @@ def search_docs(q: str, source: str = "vendor", k: int = 6):
 from .review.api import router as review_router  # noqa: E402
 
 app.include_router(review_router)
+
+from .develop.api import router as develop_router  # noqa: E402
+
+app.include_router(develop_router)
 
 
 # ------------------------------------------------------------ insights (graph analysis, no model calls)

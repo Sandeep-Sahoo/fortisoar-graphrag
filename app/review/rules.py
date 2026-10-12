@@ -21,6 +21,7 @@ import threading
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
+from ..workspace import path as _ws
 
 RULES_FILE = Path(__file__).resolve().parent.parent.parent / "data" / "review" / "rules.json"
 CATEGORIES = ("Security", "Reliability", "Performance", "Maintainability", "Governance")
@@ -162,7 +163,7 @@ BUILTIN_IDS = {r["id"] for r in BUILTIN}
 
 def _load() -> dict:
     try:
-        data = json.loads(RULES_FILE.read_text())
+        data = json.loads(_ws(RULES_FILE).read_text())
     except (OSError, ValueError):
         data = {}
     data.setdefault("custom", [])
@@ -172,11 +173,11 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
-    RULES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _ws(RULES_FILE).parent.mkdir(parents=True, exist_ok=True)
     data["version"] = int(data.get("version", 0)) + 1
-    tmp = RULES_FILE.with_suffix(".tmp")
+    tmp = _ws(RULES_FILE).with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=1))
-    tmp.replace(RULES_FILE)
+    tmp.replace(_ws(RULES_FILE))
 
 
 def version() -> int:
@@ -317,3 +318,62 @@ def reset_builtin(rule_id: str) -> None:
         data = _load()
         if data["overrides"].pop(rule_id, None) is not None:
             _save(data)
+
+
+# ---------------------------------------------------------------- import between workspaces
+
+def _comparable(rule: dict) -> dict:
+    return {k: rule.get(k) for k in ("title", "category", "severity", "description", "suggestion", "rationale", "check",
+                                     "params", "enabled", "weight")}
+
+
+def import_preview(from_ws: str) -> dict:
+    """What another workspace's rules would add or change here."""
+    from ..workspace import using
+
+    with using(from_ws):
+        theirs = _load()
+    mine = _load()
+    by_origin = {(r.get("origin") or {}).get("id"): r for r in mine["custom"] if (r.get("origin") or {}).get("workspace") == from_ws}
+    custom = []
+    for r in theirs["custom"]:
+        existing = by_origin.get(r["id"])
+        status = "new" if not existing else "same" if _comparable(existing) == _comparable(r) else "changed"
+        custom.append({**r, "import_status": status, "local_id": existing["id"] if existing else None})
+    overrides = []
+    for rid, ov in theirs["overrides"].items():
+        if rid not in BUILTIN_IDS:
+            continue
+        cur = {k: v for k, v in mine["overrides"].get(rid, {}).items() if k in ("enabled", "weight", "severity")}
+        new = {k: v for k, v in ov.items() if k in ("enabled", "weight", "severity")}
+        title = next(b["title"] for b in BUILTIN if b["id"] == rid)
+        overrides.append({"id": rid, "title": title, "theirs": new, "mine": cur, "import_status": "same" if cur == new else "changed"})
+    return {"from": from_ws, "custom": custom, "overrides": overrides}
+
+
+def import_rules(from_ws: str, custom_ids: list[str], override_ids: list[str], by: str) -> dict:
+    """Copy selected custom rules and built-in overrides from another workspace. Re-importing updates in place."""
+    preview = import_preview(from_ws)
+    pick_c = {r["id"]: r for r in preview["custom"] if r["id"] in set(custom_ids)}
+    pick_o = {o["id"]: o for o in preview["overrides"] if o["id"] in set(override_ids)}
+    added = updated = 0
+    with _lock:
+        data = _load()
+        for rid, r in pick_c.items():
+            clean = _validate(r)
+            clean["origin"] = {"workspace": from_ws, "id": rid, "imported": datetime.now(timezone.utc).isoformat(timespec="seconds"), "by": by}
+            idx = next((i for i, x in enumerate(data["custom"]) if (x.get("origin") or {}).get("workspace") == from_ws
+                        and (x.get("origin") or {}).get("id") == rid), None)
+            if idx is None:
+                clean.update(id=f"CUS-{uuid.uuid4().hex[:6].upper()}", created_by=r.get("created_by") or by, created=r.get("created"))
+                data["custom"].append(clean)
+                added += 1
+            else:
+                clean.update(id=data["custom"][idx]["id"], created_by=data["custom"][idx].get("created_by"), created=data["custom"][idx].get("created"))
+                data["custom"][idx] = clean
+                updated += 1
+        for rid, o in pick_o.items():
+            data["overrides"][rid] = {**o["theirs"], "updated_by": by, "imported_from": from_ws}
+        if pick_c or pick_o:
+            _save(data)
+    return {"added": added, "updated": updated, "overrides": len(pick_o)}
