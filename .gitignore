@@ -9,3 +9,23 @@ data/fortinet/
 data/.cache/
 data/jobs/
 data/logs/
+
+# backups (contain env.secret with API keys) and restore leftovers
+backups/
+.env.before-restore
+data.before-restore-*/
+
+# runtime app data: moves with scripts/backup.sh, never with git
+data/audit.jsonl
+data/usage.json
+data/users.json
+data/workspaces.json
+data/sync_state.json
+data/review/
+data/uploads/
+data/develop/
+data/documentation/
+data/exports/
+data/search/
+data/workspaces/
+data/vendor_docs/
