@@ -18,6 +18,7 @@ data.before-restore-*/
 # runtime app data: moves with scripts/backup.sh, never with git
 data/audit.jsonl
 data/usage.json
+data/usage.json.lock
 data/users.json
 data/workspaces.json
 data/sync_state.json

@@ -5,12 +5,17 @@ the provider's quota, not the provider's own counter: other apps using the same 
 """
 from __future__ import annotations
 
-import fcntl
 import json
 import os
 from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
+
+try:
+    import fcntl
+except ImportError:  # Windows
+    fcntl = None
+    import msvcrt
 
 USAGE_FILE = Path(__file__).resolve().parent.parent / "data" / "usage.json"
 KEEP_DAYS = 30
@@ -21,27 +26,48 @@ class DailyLimitReached(RuntimeError):
 
 
 @contextmanager
-def _locked():
-    USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(USAGE_FILE, "a+") as fh:
+def _exclusive(fh):
+    if fcntl:
         fcntl.flock(fh, fcntl.LOCK_EX)
         try:
-            fh.seek(0)
-            raw = fh.read()
-            try:
-                data = json.loads(raw) if raw.strip() else {}
-            except ValueError:
-                data = {}
-            yield data
-            for day in sorted(data)[:-KEEP_DAYS]:
-                data.pop(day, None)
-            fh.seek(0)
-            fh.truncate()
-            fh.write(json.dumps(data, indent=1))
-            fh.flush()
-            os.fsync(fh.fileno())
+            yield
         finally:
             fcntl.flock(fh, fcntl.LOCK_UN)
+        return
+    # Windows: byte-range lock on a sidecar file, so truncating usage.json never touches the locked region.
+    with open(USAGE_FILE.with_name(USAGE_FILE.name + ".lock"), "a+b") as lock:
+        while True:
+            lock.seek(0)
+            try:
+                msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)  # retries ~10 s, then raises
+                break
+            except OSError:
+                continue
+        try:
+            yield
+        finally:
+            lock.seek(0)
+            msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+
+
+@contextmanager
+def _locked():
+    USAGE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(USAGE_FILE, "a+") as fh, _exclusive(fh):
+        fh.seek(0)
+        raw = fh.read()
+        try:
+            data = json.loads(raw) if raw.strip() else {}
+        except ValueError:
+            data = {}
+        yield data
+        for day in sorted(data)[:-KEEP_DAYS]:
+            data.pop(day, None)
+        fh.seek(0)
+        fh.truncate()
+        fh.write(json.dumps(data, indent=1))
+        fh.flush()
+        os.fsync(fh.fileno())
 
 
 def today() -> str:

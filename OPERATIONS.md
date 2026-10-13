@@ -80,6 +80,18 @@ To stop everything: `Ctrl-C` for the app, then `docker compose stop`.
    - **Review**, **Develop**, **Docs**: your items are there; **Settings → Audit log** shows the history;
    - the header usage meter shows today's counts.
 
+**On Windows** (PowerShell, in the project folder) use the PowerShell versions of the commands above:
+```powershell
+[Environment]::SetEnvironmentVariable('PYTHONUTF8', '1', 'User')   # once; open a new terminal afterwards
+py -3.12 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+powershell -ExecutionPolicy Bypass -File scripts\restore.ps1 backups\graphrag-<date>
+.venv\Scripts\python.exe -m app.cli serve
+```
+`PYTHONUTF8=1` makes Python read and write files as UTF-8, as on macOS / Linux; without it, saving text such as
+`→` fails with `UnicodeEncodeError`. `restore.ps1` takes `-Yes` to skip the confirmation and `-DatabasesOnly` to
+load just the two Neo4j dumps.
+
 Nothing needs re-embedding: vectors are inside the database dumps, and the embedding / answer caches travel in
 `data/.cache/`. No AI calls are needed for the move.
 
