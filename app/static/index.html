@@ -438,6 +438,7 @@
     <a href="#chat" data-view="chat">Chat</a>
     <a href="#develop" data-view="develop">Develop</a>
     <a href="#review" data-view="review">Review</a>
+    <a href="#docs" data-view="docs">Docs</a>
     <a href="#insights" data-view="insights">Insights</a>
     <a href="#github" data-view="github">GitHub</a>
     <a href="#guide" data-view="guide">Guide</a>
@@ -523,6 +524,7 @@
       <tr><td><b>Catalog</b></td><td>Tabs for solution packs, playbooks, collections, connectors and documents, each with search, filter and sortable columns, plus a detail panel.</td><td>Click a row. Every name in a detail panel is a link. Open the inline flowchart or sequence diagram for a playbook. Use Show on Home and Ask in chat.</td></tr>
       <tr><td><b>Chat</b></td><td>Saved conversations on the left, the thread in the middle, and the graph of the cited playbooks on the right.</td><td>Ask a question, then a follow-up ("which of those need approval?"). Click a citation chip. Press ▶ Play to walk through a playbook.</td></tr>
       <tr><td><b>Develop</b></td><td>A chat that designs a new playbook with you: questions about the use case, a proposed workflow and sequence diagram, changes on request, then the developed playbook, its review score and a customer document.</td><td>Describe a use case, press Continue through the suggestions, ask for a change ("notify on Teams"), then Confirm &amp; develop and open the Customer view.</td></tr>
+      <tr><td><b>Docs</b></td><td>Playbook documentation in the FortiSOAR playbook-docs format: overview and why it matters to the SOC team, dependencies, connectors, collection table, per-playbook Flow at a Glance and Detailed Flow diagrams with a phased step-by-step, operational notes, record sets and an append-only version history.</td><td>Press 📄 Document on a playbook, collection or solution pack (Catalog), a playbook or source (Review) or a build (Develop). Pick <b>Without AI</b> (free) or <b>With AI</b> (1 request per playbook). Download Markdown or print to PDF.</td></tr>
       <tr><td><b>Review</b></td><td>Your own playbooks (uploaded or from a connected Git repo), their best-practice reviews and scores, and the best-practice catalogue.</td><td>Upload an export, open a review, answer the manual checklist, set the status. Add your own best practice on the Best practices tab.</td></tr>
       <tr><td><b>Insights</b></td><td>Connector impact, duplicate playbooks, coverage gaps, call chains, security findings and recent changes, all computed from the graph.</td><td>Pick a connector to see its blast radius. Open a deep call chain as a tree. Export any table as CSV.</td></tr>
       <tr><td><b>GitHub</b></td><td>Every downloaded repo with what's loaded and embedded, ingest history (with playbook diffs), and the embedding planner.</td><td>Re-ingest or Continue a repo. Check the planner before spending embedding quota.</td></tr>
@@ -806,6 +808,7 @@
 
 <section id="view-develop" class="view" hidden></section>
 <section id="view-review" class="view" hidden></section>
+<section id="view-docs" class="view" hidden></section>
 <section id="view-insights" class="view" hidden></section>
 
 <section id="view-settings" class="view" hidden>
@@ -2748,7 +2751,7 @@ async function bootChat() {
 }
 function parseHash() {
   const [view, kind, ...rest] = location.hash.replace(/^#/, "").split("/");
-  const views = ["home", "browse", "chat", "guide", "settings", "github", "review", "insights", "search", "develop"];
+  const views = ["home", "browse", "chat", "guide", "settings", "github", "review", "insights", "search", "develop", "docs"];
   return { view: views.includes(view) ? view : "home", kind: kind ? decodeURIComponent(kind) : kind, id: rest.length ? decodeURIComponent(rest.join("/")) : null };
 }
 async function route() {
@@ -2786,7 +2789,7 @@ async function showView(name) {
   } else if (name === "settings") {
     stopPlay();
     renderSettings().then(() => window.afterSettings?.()).catch(err => toast(err.message, true));
-  } else if (name === "review" || name === "insights" || name === "develop") {
+  } else if (["review", "insights", "develop", "docs"].includes(name)) {
     stopPlay();
   } else {
     requestAnimationFrame(() => cy.resize());
@@ -2827,5 +2830,6 @@ $("btn-logout").onclick = async () => { await fetch("/auth/logout", { method: "P
 <script src="/static/js/review.js"></script>
 <script src="/static/js/insights.js"></script>
 <script src="/static/js/develop.js"></script>
+<script src="/static/js/docs.js"></script>
 </body>
 </html>

@@ -168,6 +168,7 @@
         <td>${s.status === "error" ? `<span class="pill warn" title="${esc(s.error || "")}">error</span>` : `<span class="pill">${esc(s.status)}</span>`}</td>
         <td><div class="btnrow">
           <button type="button" data-act="view">Reviews</button>
+          <button type="button" data-act="doc" data-min-role="analyst" title="Document every playbook in this source">📄 Document</button>
           <button type="button" data-act="sync" data-min-role="analyst" title="${s.kind === "git" ? "Pull the latest commit and re-review" : "Re-review with the current best practices"}">${s.kind === "git" ? "⟳ Pull" : "↻ Re-review"}</button>
           ${s.kind === "upload" ? `<button type="button" data-act="add" data-min-role="analyst" title="Add or replace files">+ Files</button>` : ""}
           <button type="button" data-act="del" data-min-role="analyst">Delete</button></div></td></tr>`).join("")}</tbody></table>`;
@@ -177,6 +178,7 @@
         e.stopPropagation();
         const act = b.dataset.act;
         if (act === "view") { S.sourceFilter = src.id; location.hash = "#review/reviews"; return; }
+        if (act === "doc") { window.openDocDialog("source", src.id, src.name); return; }
         if (act === "del") {
           if (!confirm(`Delete "${src.name}"? Its playbooks are removed from the graph and its reviews, answers and history are deleted.`)) return;
           try { await api(`/uploads/${src.id}`, { method: "DELETE" }); notify("Source deleted."); loadSources(); loadCards(); } catch (err) { notify(err.message, true); }
@@ -328,6 +330,7 @@
         <button type="button" id="rd-md">⤓ Review (.md)</button>
         <button type="button" id="rd-csv">⤓ Findings (.csv)</button>
         <button type="button" id="rd-link">🔗 Copy link</button>
+        ${r.graph_uuid ? `<button type="button" id="rd-doc" data-min-role="analyst">📄 Document</button>` : ""}
       </div>
       <h3>Category scores</h3>
       <div class="catbars">${Object.entries(r.categories).map(([c, v]) => `<span>${esc(c)}</span><div class="bar"><span style="width:${v}%;background:${scoreColor(v)}"></span></div><b>${v}</b>`).join("")}</div>
@@ -365,6 +368,7 @@
     $("rd-csv").onclick = () => downloadCSV(`findings-${safeName(r.name)}`, [["severity", "Severity"], ["rule", "Rule"], ["title", "Title"], ["category", "Category"],
       ["step", "Step"], ["detail", "Finding"], ["evidence", "Evidence"], ["suggestion", "Suggestion"]], r.findings);
     $("rd-link").onclick = () => copyLink(`#review/reviews/${encKey(key)}`);
+    document.getElementById("rd-doc")?.addEventListener("click", () => window.openDocDialog("playbook", r.graph_uuid, r.name));
     side.querySelectorAll(".check").forEach(box => {
       const rule = box.dataset.rule, note = box.querySelector("input");
       box.querySelectorAll("button[data-answer]").forEach(b => b.onclick = async () => {

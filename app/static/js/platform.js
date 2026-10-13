@@ -183,6 +183,14 @@ window.afterCatalogDetail = async (kind, id, panel) => {
   if (!actions) return;
   const add = (html, fn) => { const t = document.createElement("template"); t.innerHTML = html.trim(); const b = t.content.firstChild; b.onclick = fn; actions.appendChild(b); return b; };
   add(`<button type="button" title="Copy a link to this page">🔗 Copy link</button>`, () => copyLink(location.hash));
+  if (["playbooks", "collections", "packs"].includes(kind) && hasRole("analyst")) {
+    const docKind = { playbooks: "playbook", collections: "collection", packs: "pack" }[kind];
+    add(`<button type="button" title="Documentation in the FortiSOAR playbook-docs format (with or without AI)">📄 Document</button>`, async () => {
+      let target = id;
+      if (kind === "playbooks") target = (await api(`/playbooks/${enc(id)}`).catch(() => ({}))).uuid || id;
+      window.openDocDialog(docKind, target, panel.querySelector("h2")?.textContent || id);
+    });
+  }
   if (kind === "playbooks") {
     const p = await api(`/playbooks/${enc(id)}`).catch(() => null);
     if (!p?.uuid) return;

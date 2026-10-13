@@ -6,6 +6,7 @@ import pytest
 def isolated_data(tmp_path, monkeypatch):
     import app.audit as audit
     import app.develop.store as develop_store
+    import app.docgen as docgen
     import app.exports as exports
     import app.ingest.state as ingest_state
     import app.review.rules as rules
@@ -18,6 +19,7 @@ def isolated_data(tmp_path, monkeypatch):
 
     monkeypatch.setattr(audit, "AUDIT_FILE", tmp_path / "audit.jsonl")
     monkeypatch.setattr(develop_store, "DIR", tmp_path / "develop")
+    monkeypatch.setattr(docgen, "DIR", tmp_path / "documentation")
     monkeypatch.setattr(users, "USERS_FILE", tmp_path / "users.json")
     monkeypatch.setattr(usage, "USAGE_FILE", tmp_path / "usage.json")
     monkeypatch.setattr(rules, "RULES_FILE", tmp_path / "review" / "rules.json")

@@ -201,6 +201,7 @@
         <button type="button" data-act="doc">⤓ Design document (.md)</button>
         <button type="button" data-act="review" data-min-role="analyst" title="Load it into the graph and the Review page">→ Send to Review</button>
         <button type="button" data-act="link">🔗 Link</button>
+        <button type="button" data-act="document" data-min-role="analyst" title="Documentation in the FortiSOAR playbook-docs format">📄 Document</button>
       </div>
       ${inThread ? `<div class="sub" style="margin-top:8px">Import it in FortiSOAR (Automation → Playbooks → Import) into a staging instance first: it arrives inactive.
         The customer view lists the prerequisites, the values to set and the test plan.</div>` : ""}
@@ -213,6 +214,7 @@
     el.querySelector('[data-act="doc"]').onclick = () => { location.href = `/develop/sessions/${D.sid}/document.md${q}`; };
     el.querySelector('[data-act="view"]').onclick = () => window.open(`/develop/sessions/${D.sid}/view${q}`, "_blank", "noopener");
     el.querySelector('[data-act="link"]').onclick = () => copyLink(`#develop/${D.sid}`);
+    el.querySelector('[data-act="document"]').onclick = () => window.openDocDialog("develop", D.sid, D.session?.spec?.name || "Developed playbook");
     el.querySelector('[data-act="review"]').onclick = async () => {
       try { const r = await post(`/develop/sessions/${D.sid}/to-review`); notify(`Added to Review (score ${r.summary.avg_score}).`); location.hash = `#review/reviews/${encKey(r.review_key)}`; }
       catch (err) { notify(err.message, true); }

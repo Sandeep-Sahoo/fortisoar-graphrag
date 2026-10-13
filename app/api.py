@@ -874,6 +874,96 @@ from .develop.api import router as develop_router  # noqa: E402
 app.include_router(develop_router)
 
 
+# ------------------------------------------------------------ playbook documentation (fortisoar-playbook-docs format)
+
+class DocRequest(BaseModel):
+    kind: Literal["playbook", "collection", "pack", "source", "develop"]
+    target: str
+    ai: bool = False
+    requested_by: str = ""
+    note: str = ""
+
+
+@app.get("/documentation/estimate")
+def documentation_estimate(kind: str, target: str):
+    from . import docgen, usage
+
+    try:
+        est = docgen.estimate(get_services(), kind, target)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc).strip("'\""))
+    return est | {"usage": usage.summary()["llm"]}
+
+
+@app.post("/documentation")
+def documentation_generate(body: DocRequest, request: Request):
+    from . import audit, docgen
+
+    if body.ai:
+        require_ai(request)
+    try:
+        doc = docgen.generate(get_services(), body.kind, body.target, body.ai, current_user(request) or "-", body.requested_by, body.note)
+    except KeyError as exc:
+        raise HTTPException(404, str(exc).strip("'\""))
+    audit.record(current_user(request), "doc.generate", f"{body.kind}:{body.target}", ai=body.ai, version=doc["history"][-1]["version"],
+                 ai_used=doc["stats"]["ai_used"])
+    return doc
+
+
+@app.get("/documentation")
+def documentation_list():
+    from . import docgen
+
+    return docgen.list_docs()
+
+
+@app.get("/documentation/{doc_id}")
+def documentation_get(doc_id: str):
+    from . import docgen
+
+    doc = docgen.get(doc_id)
+    if not doc:
+        raise HTTPException(404, "no such document")
+    return doc
+
+
+@app.get("/documentation/{doc_id}/export.md")
+def documentation_md(doc_id: str):
+    from fastapi.responses import PlainTextResponse
+
+    from . import docgen
+
+    doc = docgen.get(doc_id)
+    if not doc:
+        raise HTTPException(404, "no such document")
+    name = "".join(ch if ch.isalnum() or ch in "-_" else "-" for ch in doc["title"])[:60] or "playbook"
+    return PlainTextResponse(doc["markdown"], media_type="text/markdown",
+                             headers={"Content-Disposition": f'attachment; filename="{name}-documentation.md"'})
+
+
+@app.get("/documentation/{doc_id}/view")
+def documentation_view(doc_id: str):
+    from fastapi.responses import HTMLResponse
+
+    from . import docgen
+    from .exports import print_html
+
+    doc = docgen.get(doc_id)
+    if not doc:
+        raise HTTPException(404, "no such document")
+    return HTMLResponse(print_html(f"{doc['title']} — Playbook Documentation", doc["markdown"]))
+
+
+@app.delete("/documentation/{doc_id}")
+def documentation_delete(doc_id: str, request: Request):
+    from . import audit, docgen
+
+    if not docgen.delete(doc_id):
+        raise HTTPException(404, "no such document")
+    audit.record(current_user(request), "doc.delete", doc_id)
+    return {"ok": True}
+
+
 # ------------------------------------------------------------ insights (graph analysis, no model calls)
 
 @app.get("/insights/connectors")
