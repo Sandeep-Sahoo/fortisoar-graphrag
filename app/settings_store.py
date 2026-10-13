@@ -12,6 +12,9 @@ ENV_FILE = ROOT / ".env"
 FIELDS = [
     ("COMPANY_NAME", "General", "Company name", "text", "Used in answers (\"In your playbook…\") and prompts."),
     ("FORTISOAR_VERSION", "General", "FortiSOAR version tag", "text", "Version recorded on documents loaded with ingest-docs."),
+    ("OWNER_NAME", "General", "Owner name", "text", "Shown in the Home help panel as the person to contact about this app."),
+    ("OWNER_CONTACT", "General", "Owner contact", "text", "E-mail address or chat handle shown in the help panel (e-mail addresses become a mail link). Blank hides it."),
+    ("OWNER_URL", "General", "Owner profile / team page", "text", "A link shown in the help panel, e.g. a GitHub profile, intranet or Teams page."),
 
     ("APP_MODE", "AI models", "Mode", "select", "local: Neo4j here, hosted models · cloud: everything hosted · full-local: Ollama only, nothing leaves the machine.",
      {"options": ["local", "cloud", "full-local"]}),
@@ -60,7 +63,7 @@ FIELDS = [
     ("GIT_TOKEN_USER", "Data sources", "Git token username", "text", "x-access-token for GitHub, oauth2 for GitLab, your username for Bitbucket app passwords."),
 ]
 
-DEFAULTS = {"LOG_LEVEL": "INFO", "FORTISOAR_VERSION": "7.6", "COMPANY_NAME": "our company", "APP_MODE": "local", "EMBED_DIM": "768",
+DEFAULTS = {"OWNER_NAME": "Sandeep Sahoo", "OWNER_URL": "https://github.com/Sandeep-Sahoo", "LOG_LEVEL": "INFO", "FORTISOAR_VERSION": "7.6", "COMPANY_NAME": "our company", "APP_MODE": "local", "EMBED_DIM": "768",
             "NEO4J_USER": "neo4j", "NEO4J_DATABASE": "neo4j", "OLLAMA_URL": "http://localhost:11434",
             "SESSION_HOURS": "12", "RETRIEVAL_PLAYBOOKS_K": "5", "RETRIEVAL_VENDOR_K": "5", "RETRIEVAL_INTERNAL_K": "4",
             "CHAT_HISTORY_TURNS": "6", "INCLUDE_PROPOSED_LINKS": "false", "OVERVIEW_PLAYBOOK_LIMIT": "300",
@@ -281,3 +284,16 @@ def apply_scope(scope: str, updates: dict, env_file: Path | None = None) -> dict
         changed += sorted(k.rsplit("_", 1)[0] for k in secrets)
     reset_services()
     return {"changed": sorted(set(changed)), "needs_reingest": []}
+
+
+def reference() -> list[dict]:
+    """The settings catalogue without any values, for the Guide's settings reference."""
+    out = []
+    for key, group, label, ftype, help_text, *extra in FIELDS:
+        item = {"key": key, "group": group, "label": label, "type": ftype, "help": help_text, "default": DEFAULTS.get(key, "")}
+        if extra and extra[0].get("options"):
+            item["options"] = [o for o in extra[0]["options"] if o]
+        if extra and extra[0].get("danger"):
+            item["danger"] = True
+        out.append(item)
+    return out

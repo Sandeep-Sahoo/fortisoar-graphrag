@@ -218,3 +218,79 @@ body:not([data-super]) [data-super] { display: none !important; }
 .dd-opt { flex-direction: row !important; gap: 8px !important; align-items: flex-start; color: var(--text) !important; font-size: 13px !important;
           border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; }
 @media (max-width: 900px) { .docs-layout { grid-template-columns: 1fr; } }
+
+/* ---- diagram card extras: orientation, camera, docking, explorer layout (js/diagrams.js) */
+.seg[hidden], .zoombar[hidden] { display: none !important; }
+.diagram .dg-name { font-size: 13px; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.diagram .docked-note { display: none; align-items: center; gap: 8px; padding: 8px 10px; font-size: 12.5px; color: var(--muted); border-top: 1px solid var(--border); }
+.diagram.docked-away .docked-note { display: flex; }
+.diagram.docked-away .xbody { display: none; }
+.diagram.docked-away .zoombar { display: none; }
+.diagram .linbar .cams button { padding: 3px 8px; font-size: 12px; }
+/* explorer: the card fills its box; the scenario list becomes a side column (stacked when narrow) */
+.diagram.explorer { display: flex; flex-direction: column; min-height: 0; height: 100%; border-radius: 0; border: 0; container-type: inline-size; }
+.diagram.explorer .xbody { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); }
+.diagram.explorer .xbody.noscn { grid-template-columns: minmax(0, 1fr); }
+.diagram.explorer .scnbar { border-top: 0; border-right: 1px solid var(--border); overflow-y: auto; min-height: 0; }
+.diagram.explorer .scnlist { max-height: none; }
+.diagram.explorer .xmain { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.diagram.explorer .canvas.zoomable { flex: 1; max-height: none; min-height: 0; }
+/* 🧊 3D on a diagram card: the same box as the drawing */
+.diagram .dg3d { position: relative; height: min(70vh, 560px); min-height: 360px; }
+.diagram .dg3d[hidden], .diagram .canvas[hidden] { display: none; }
+.diagram.explorer .dg3d { flex: 1; height: auto; min-height: 0; }
+.diagram .dg-3d[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent-text); border-color: var(--accent); }
+@container (max-width: 640px) {
+  .diagram.explorer .xbody { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .diagram.explorer .scnbar { border-right: 0; border-bottom: 1px solid var(--border); max-height: 190px; }
+}
+#diagram-viewer .body.live { padding: 0; display: flex; }
+#diagram-viewer .body.live > .diagram { flex: 1; }
+/* chat: an expanded diagram docks into the right panel; the graph minimises to its toolbar */
+#scn-dock { display: flex; flex-direction: column; flex: 1; min-height: 0; border-bottom: 1px solid var(--border); }
+#scn-dock[hidden] { display: none; }
+#btn-graph-restore { display: none; }
+#graphpanel.docked:not(.dock-min) #btn-graph-restore { display: inline-block; }
+#graphpanel.docked:not(.dock-min) > .bar > button:not(#btn-graph-restore),
+#graphpanel.docked:not(.dock-min) > .bar > .zoombar { display: none; }
+#graphpanel.docked:not(.dock-min) #graph-title::after { content: " (minimised)"; color: var(--muted); font-weight: 400; }
+#graphpanel.docked:not(.dock-min) #player, #graphpanel.docked:not(.dock-min) #graph-wrap,
+#graphpanel.docked:not(.dock-min) #legend, #graphpanel.docked:not(.dock-min) #details { display: none !important; }
+/* ▾ Minimise: the docked diagram shrinks to its title bar above the graph; ▴ Restore opens it again */
+#graphpanel.dock-min #scn-dock { flex: none; }
+#graphpanel.dock-min #scn-dock .diagram > :not(.bar) { display: none !important; }
+#graphpanel.dock-min #scn-dock .diagram > .bar > :not(.dg-name):not(.dg-min):not(.dg-close):not(select) { display: none; }
+.dg-min { font-weight: 600; }
+/* graph-panel node details can be hidden */
+#details { position: relative; }
+#details[hidden] { display: none; }
+#details .details-close { position: sticky; top: 0; float: right; margin: -4px -4px 0 8px; padding: 1px 7px; font-size: 12px; line-height: 1.4; }
+/* scenario links next to playbook names */
+.scn-link { text-decoration: none; font-size: 12px; opacity: .75; }
+.scn-link:hover { opacity: 1; }
+
+/* ---- Scenarios page */
+.scn-page { display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); height: calc(100vh - 50px); }
+.scn-pick { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--border); background: var(--panel); }
+.scn-pick-head { padding: 14px 14px 8px; display: flex; flex-direction: column; gap: 8px; border-bottom: 1px solid var(--border); }
+.scn-pick-head h1 { font-size: 18px; font-weight: 600; margin: 0; }
+.scn-pick-head .lead { color: var(--muted); font-size: 12.5px; margin: 0; }
+.scn-pick-head input { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+.scn-pbs { list-style: none; margin: 0; padding: 6px; overflow-y: auto; flex: 1; min-height: 0; }
+.scn-pbs a { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; border-radius: 8px; color: var(--text); text-decoration: none; }
+.scn-pbs a:hover { background: var(--sunk); }
+.scn-pbs a[aria-current="true"] { background: var(--accent-bg); color: var(--accent-text); }
+.scn-pb-name { font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.scn-main { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+.scn-main-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; padding: 12px 16px 8px; border-bottom: 1px solid var(--border); background: var(--panel); }
+.scn-main-head h2 { font-size: 16px; margin: 0; }
+.scn-main > .diagram { flex: 1; }
+/* opened from a right-click on a playbook: the list entry and the header flash a few times */
+.scn-pbs a.flash, .scn-main-head.flash { animation: scnflash 1.1s ease-in-out 3; }
+@keyframes scnflash { 50% { background: var(--active); color: #fff; box-shadow: 0 0 0 3px var(--active); } }
+.scn-main .diagram .dg-name { display: none; }  /* the page header already names it */
+@media (max-width: 900px) {
+  .scn-page { grid-template-columns: 1fr; grid-template-rows: auto 85vh; height: auto; }
+  .scn-pick { border-right: 0; border-bottom: 1px solid var(--border); }
+  .scn-pbs { max-height: 200px; }
+}

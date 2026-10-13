@@ -280,6 +280,36 @@ def about():
     return build(get_services())
 
 
+@app.get("/app/info")
+def app_info():
+    """Version and owner details for the Home help panel."""
+    import os
+    import subprocess
+
+    from . import __version__
+    from .settings_store import DEFAULTS, ROOT
+
+    def git(*args: str) -> str:
+        try:
+            return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, timeout=3).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            return ""
+
+    remote = git("config", "--get", "remote.origin.url")
+    owner = {k: os.environ.get(f"OWNER_{k.upper()}", DEFAULTS.get(f"OWNER_{k.upper()}", "")) for k in ("name", "contact", "url")}
+    return {"name": "FortiSOAR Graph RAG", "version": __version__, "commit": git("rev-parse", "--short", "HEAD"),
+            "commit_date": git("log", "-1", "--format=%cs"), "repo": remote.removesuffix(".git") if remote.startswith("https://") else "",
+            "owner": owner, "mode": get_services().settings.mode}
+
+
+@app.get("/guide/settings")
+def guide_settings():
+    """Every setting with its group, label, help text, type, options and default (no values) for the Guide."""
+    from .settings_store import reference
+
+    return reference()
+
+
 @app.get("/health")
 def health():
     svc = get_services()
@@ -360,10 +390,12 @@ def chat_message(session_id: str, body: ChatMessageIn, request: Request):
 
 
 @app.get("/playbooks/{name_or_uuid}/diagram")
-def playbook_diagram(name_or_uuid: str, kind: str = "flowchart"):
-    if kind not in ("flowchart", "sequence"):
-        raise HTTPException(400, "kind must be flowchart or sequence")
-    result = get_services().playbook_diagram(name_or_uuid, kind)
+def playbook_diagram(name_or_uuid: str, kind: str = "flowchart", dir: str = "TB", children: bool = False):
+    from .diagrams import KINDS
+
+    if kind not in KINDS:
+        raise HTTPException(400, f"kind must be one of {', '.join(KINDS)}")
+    result = get_services().playbook_diagram(name_or_uuid, kind, dir, children)
     if "error" in result:
         raise HTTPException(404, result["error"])
     return result

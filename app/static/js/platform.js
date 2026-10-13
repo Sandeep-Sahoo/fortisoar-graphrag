@@ -142,6 +142,7 @@ async function rawDiagramSvg(svg) {
     } catch { /* fall back to the on-screen SVG */ }
   }
   const clone = svg.cloneNode(true);
+  clone.querySelectorAll(".flow-dot").forEach(d => d.remove());
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
   return clone.outerHTML;
 }

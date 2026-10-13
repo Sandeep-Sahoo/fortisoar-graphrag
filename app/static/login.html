@@ -7,46 +7,49 @@
 <script>try{var t=localStorage.getItem("graphrag.theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
 <title>Sign in · FortiSOAR Graph RAG</title>
 <style>
-  :root { --bg: #f7f7f5; --panel: #fff; --text: #1f1f1d; --muted: #6b6a65; --border: #e2e0d8;
-          --accent: #534AB7; --accent-bg: #EEEDFE; --danger: #A32D2D; --c1: #7F77DD; --c2: #1D9E75; --c3: #EF9F27; --c4: #378ADD; }
-  :root { color-scheme: light; }
+  /* Everything is inline: the sign-in page loads before the app's static files are available. */
+  :root { --bg: #f4f3fb; --bg2: #e6e3f7; --panel: rgba(255,255,255,.78); --text: #1f1f1d; --muted: #5f5e59; --border: rgba(83,74,183,.18);
+          --accent: #534AB7; --accent-bg: #EEEDFE; --danger: #A32D2D; --c1: #7F77DD; --c2: #1D9E75; --c3: #EF9F27; --c4: #378ADD;
+          --grid: 83,74,183; --link: 83,74,183; --glow: 239,159,39; color-scheme: light; }
   @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) { --bg: #1c1c1a; --panel: #262624; --text: #ecebe6; --muted: #a3a29c; --border: #3a3a37;
-            --accent: #AFA9EC; --accent-bg: #2f2b55; --danger: #F09595; color-scheme: dark; }
+    :root:not([data-theme="light"]) { --bg: #0d0c1a; --bg2: #1b1838; --panel: rgba(30,29,40,.72); --text: #ecebe6; --muted: #a3a29c; --border: rgba(175,169,236,.22);
+            --accent: #AFA9EC; --accent-bg: #2f2b55; --danger: #F09595; --grid: 175,169,236; --link: 175,169,236; --glow: 255,196,90; color-scheme: dark; }
   }
-  :root[data-theme="dark"] { --bg: #1c1c1a; --panel: #262624; --text: #ecebe6; --muted: #a3a29c; --border: #3a3a37;
-            --accent: #AFA9EC; --accent-bg: #2f2b55; --danger: #F09595; color-scheme: dark; }
+  :root[data-theme="dark"] { --bg: #0d0c1a; --bg2: #1b1838; --panel: rgba(30,29,40,.72); --text: #ecebe6; --muted: #a3a29c; --border: rgba(175,169,236,.22);
+            --accent: #AFA9EC; --accent-bg: #2f2b55; --danger: #F09595; --grid: 175,169,236; --link: 175,169,236; --glow: 255,196,90; color-scheme: dark; }
   * { box-sizing: border-box; }
-  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--text);
-         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; padding: 16px; overflow: hidden; }
-  .orbit { position: fixed; inset: 0; pointer-events: none; display: grid; place-items: center; }
-  .orbit span { position: absolute; border: 1px dashed var(--border); border-radius: 50%; }
-  .orbit i { position: absolute; width: 12px; height: 12px; border-radius: 50%; top: -6px; left: calc(50% - 6px); }
-  .orbit span:nth-child(1) { width: 420px; height: 420px; animation: spin 40s linear infinite; }
-  .orbit span:nth-child(2) { width: 640px; height: 640px; animation: spin 70s linear infinite reverse; }
-  .orbit span:nth-child(3) { width: 880px; height: 880px; animation: spin 110s linear infinite; }
-  .orbit span:nth-child(1) i { background: var(--c1); } .orbit span:nth-child(2) i { background: var(--c2); }
-  .orbit span:nth-child(3) i { background: var(--c3); }
-  @keyframes spin { to { transform: rotate(360deg); } }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; color: var(--text); padding: 16px; overflow: hidden;
+         font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+         background: radial-gradient(ellipse at 50% 38%, var(--bg2), var(--bg) 70%); }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .tagline { position: fixed; left: 0; right: 0; bottom: 18px; text-align: center; color: var(--muted); font-size: 12px; letter-spacing: .14em;
+             text-transform: uppercase; pointer-events: none; }
+  .tagline b { color: var(--accent); font-weight: 600; }
   form { position: relative; width: 100%; max-width: 360px; background: var(--panel); border: 1px solid var(--border);
-         border-radius: 16px; padding: 28px 26px 22px; display: flex; flex-direction: column; gap: 14px; }
-  .logo { width: 54px; height: 54px; border-radius: 50%; margin: 0 auto 2px; display: grid; place-items: center;
-          background: conic-gradient(var(--c1) 0 25%, var(--c2) 0 50%, var(--c3) 0 75%, var(--c4) 0); }
-  .logo::after { content: ""; width: 30px; height: 30px; border-radius: 50%; background: var(--panel); }
+         border-radius: 18px; padding: 28px 26px 22px; display: flex; flex-direction: column; gap: 14px;
+         backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
+         box-shadow: 0 18px 60px rgba(0,0,0,.28), 0 0 0 1px rgba(255,255,255,.04) inset; animation: rise .6s ease-out; }
+  @keyframes rise { from { opacity: 0; transform: translateY(12px) scale(.98); } }
+  .logo { width: 54px; height: 54px; border-radius: 50%; margin: 0 auto 2px; display: grid; place-items: center; position: relative;
+          background: conic-gradient(var(--c1) 0 25%, var(--c2) 0 50%, var(--c3) 0 75%, var(--c4) 0); animation: turn 12s linear infinite; }
+  .logo::after { content: ""; width: 30px; height: 30px; border-radius: 50%; background: var(--bg2); }
+  @keyframes turn { to { transform: rotate(360deg); } }
   h1 { font-size: 18px; font-weight: 600; margin: 0; text-align: center; }
   .sub { color: var(--muted); font-size: 13px; text-align: center; margin-top: -8px; }
   label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
-  input { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font: inherit; }
+  input { padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: rgba(127,127,127,.08); color: var(--text); font: inherit; }
   input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
-  button { padding: 10px; border-radius: 10px; border: 0; background: var(--accent); color: var(--panel); font: inherit; font-weight: 600; cursor: pointer; }
+  button { padding: 10px; border-radius: 10px; border: 0; background: var(--accent); color: #fff; font: inherit; font-weight: 600; cursor: pointer; }
+  :root[data-theme="dark"] button { color: #1b1838; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) button { color: #1b1838; } }
   button:disabled { opacity: .6; cursor: wait; }
   .error { color: var(--danger); font-size: 13px; min-height: 18px; }
   .hint { color: var(--muted); font-size: 12px; text-align: center; }
-  @media (prefers-reduced-motion: reduce) { .orbit span { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .logo, form { animation: none; } }
 </style>
 </head>
 <body>
-<div class="orbit" aria-hidden="true"><span><i></i></span><span><i></i></span><span><i></i></span></div>
+<canvas id="scene" aria-hidden="true"></canvas>
 <form id="form" novalidate>
   <div class="logo" aria-hidden="true"></div>
   <h1>FortiSOAR Graph RAG</h1>
@@ -57,6 +60,7 @@
   <button id="submit" type="submit">Sign in</button>
   <div class="hint">Local default is admin / admin. Change it with APP_USERNAME and APP_PASSWORD in .env.</div>
 </form>
+<div class="tagline" aria-hidden="true"><b>Trigger</b> · Enrich · Decide · <b>Respond</b></div>
 <script>
 const $ = id => document.getElementById(id);
 ["username", "password"].forEach(id => $(id).addEventListener("input", () => { $("error").textContent = ""; }));
@@ -74,6 +78,144 @@ $("form").addEventListener("submit", async e => {
   } catch { $("error").textContent = "Can't reach the server."; }
   finally { $("submit").disabled = false; }
 });
+
+/* Background: a slowly turning 3D automation network drawn on a 2D canvas (own perspective projection, no library).
+   Triggers feed the SOAR hub, the hub fans out to playbook steps, steps call connector actions; data packets travel
+   the links in that direction and each node flashes as a packet arrives. A perspective grid scrolls underneath. */
+(() => {
+  const cv = $("scene"), ctx = cv.getContext("2d");
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let W = 0, H = 0, dpr = 1, colors = {};
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  function readColors() {
+    colors = { c1: css("--c1"), c2: css("--c2"), c3: css("--c3"), c4: css("--c4"), text: css("--text"), muted: css("--muted"),
+               grid: css("--grid"), link: css("--link"), glow: css("--glow") };
+  }
+  function resize() {
+    dpr = Math.min(2, devicePixelRatio || 1);
+    W = innerWidth; H = innerHeight;
+    cv.width = W * dpr; cv.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    readColors();
+  }
+
+  // ---- the network (deterministic, so it looks the same every visit)
+  let seed = 7;
+  const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const nodes = [], links = [];
+  const add = (x, y, z, r, color, label) => (nodes.push({ x, y, z, r, color, label, flash: 0, out: [] }), nodes.length - 1);
+  const link = (a, b) => { links.push({ a, b }); nodes[a].out.push(links.length - 1); };
+  const ring = (n, radius, y, jitter, phase = 0) => Array.from({ length: n }, (_, i) => {
+    const t = phase + i / n * Math.PI * 2;
+    return [Math.cos(t) * radius + (rnd() - .5) * jitter, y + (rnd() - .5) * jitter, Math.sin(t) * radius + (rnd() - .5) * jitter];
+  });
+  function build() {
+    const hub = add(0, 0, 0, 13, "c1", "SOAR");
+    const triggers = ["Alert", "Incident", "Email", "SIEM", "EDR", "Indicator"];
+    const steps = ["Enrich", "Lookup", "Score", "Decide", "Approve", "Contain", "Isolate", "Block", "Notify", "Ticket", "Update", "Close", "Hunt", "Report"];
+    const actions = ["reputation", "geo-ip", "sandbox", "firewall", "endpoint", "directory", "mail purge", "chat", "case", "storage"];
+    const T = ring(triggers.length, 330, -150, 40, .3).map((p, i) => add(...p, 7, "c3", triggers[i]));
+    const S = ring(steps.length, 205, 10, 50).map((p, i) => add(...p, 6, i % 4 === 3 ? "c4" : "c1", i % 2 ? null : steps[i]));
+    const C = ring(actions.length, 360, 170, 60, .5).map((p, i) => add(...p, 6.5, "c2", i % 2 ? actions[i] : null));
+    T.forEach(t => link(t, hub));
+    S.forEach((s, i) => { if (i % 3 === 0) link(hub, s); });
+    S.forEach((s, i) => { if (i % 3 !== 2 && i + 1 < S.length) link(s, S[i + 1]); });
+    S.forEach((s, i) => link(s, C[Math.floor(i * C.length / S.length)]));
+    // a little ambient dust around the network
+    for (let i = 0; i < 70; i++) add((rnd() - .5) * 1100, (rnd() - .5) * 700, (rnd() - .5) * 1100, 1.2, "dust", null);
+  }
+  build();
+  const starts = links.map((l, i) => i).filter(i => nodes[links[i].b].label === "SOAR");  // packets start at the triggers
+  const packets = Array.from({ length: 26 }, (_, i) => ({ link: starts[i % starts.length], t: rnd(), speed: .25 + rnd() * .25 }));
+
+  // ---- camera
+  let rotY = 0, tiltX = -.32, mx = 0, my = 0, px = 0, py = 0, gridShift = 0;
+  addEventListener("pointermove", e => { mx = (e.clientX / W - .5); my = (e.clientY / H - .5); });
+  function project(x, y, z) {
+    const cy = Math.cos(rotY + px * .5), sy = Math.sin(rotY + px * .5);
+    let X = x * cy - z * sy, Z = x * sy + z * cy;
+    const ct = Math.cos(tiltX + py * .25), st = Math.sin(tiltX + py * .25);
+    let Y = y * ct - Z * st; Z = y * st + Z * ct;
+    const dist = 900, f = Math.min(W * .95, H * 1.35), s = f / (Z + dist);  // fills wide screens around the card
+    return { x: W / 2 + X * s, y: H * .47 + Y * s, s, z: Z };
+  }
+  const rgba = (rgb, a) => `rgba(${rgb},${a})`;
+  const hexA = (hex, a) => {
+    const n = parseInt(hex.replace("#", ""), 16);
+    return Number.isFinite(n) ? `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})` : hex;
+  };
+
+  function grid() {  // perspective floor that scrolls towards the viewer
+    const y = 330, span = 1600, step = 110;
+    ctx.lineWidth = 1;
+    for (let gx = -span; gx <= span; gx += step) {
+      const a = project(gx, y, -span), b = project(gx, y, span);
+      ctx.strokeStyle = rgba(colors.grid, .07); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    for (let gz = -span + (gridShift % step); gz <= span; gz += step) {
+      const a = project(-span, y, gz), b = project(span, y, gz);
+      const fade = Math.max(0, Math.min(1, (span - Math.abs(gz)) / span));
+      ctx.strokeStyle = rgba(colors.grid, .1 * fade); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+  }
+  function frame(now) {
+    const dt = Math.min(.05, (now - (frame.last || now)) / 1000);
+    frame.last = now;
+    if (!still) { rotY += dt * .07; gridShift += dt * 40; }
+    px += (mx - px) * .04; py += (my - py) * .04;
+    ctx.clearRect(0, 0, W, H);
+    grid();
+    const P = nodes.map(n => project(n.x, n.y, n.z));
+    const depth = p => Math.max(.15, Math.min(1, 1.15 - (p.z + 500) / 1300));  // far = fainter
+    // links
+    for (const l of links) {
+      const a = P[l.a], b = P[l.b], d = (depth(a) + depth(b)) / 2;
+      ctx.strokeStyle = rgba(colors.link, .16 * d + .04); ctx.lineWidth = .8 + d;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    // packets: travel source -> target, then carry on along one of the target's outgoing links
+    for (const k of packets) {
+      if (!still) k.t += dt * k.speed;
+      if (k.t >= 1) {
+        const l = links[k.link], next = nodes[l.b].out;
+        nodes[l.b].flash = 1;
+        k.t = 0;
+        k.link = next.length ? next[Math.floor(rnd() * next.length)] : starts[Math.floor(rnd() * starts.length)];
+      }
+      const l = links[k.link], a = P[l.a], b = P[l.b];
+      const x = a.x + (b.x - a.x) * k.t, y = a.y + (b.y - a.y) * k.t, d = (depth(a) + depth(b)) / 2, r = 2 + 3 * d;
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r * 4);
+      g.addColorStop(0, rgba(colors.glow, .95)); g.addColorStop(.25, rgba(colors.glow, .5)); g.addColorStop(1, rgba(colors.glow, 0));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r * 4, 0, Math.PI * 2); ctx.fill();
+    }
+    // nodes, far to near
+    const order = nodes.map((n, i) => i).sort((i, j) => P[j].z - P[i].z);
+    ctx.textAlign = "center";
+    for (const i of order) {
+      const n = nodes[i], p = P[i], d = depth(p);
+      if (n.color === "dust") { ctx.fillStyle = rgba(colors.grid, .25 * d); ctx.beginPath(); ctx.arc(p.x, p.y, n.r * p.s * 1.4, 0, Math.PI * 2); ctx.fill(); continue; }
+      const base = colors[n.color], r = n.r * p.s * 1.25;
+      if (n.flash > 0) {  // arrival flash
+        ctx.fillStyle = rgba(colors.glow, .35 * n.flash);
+        ctx.beginPath(); ctx.arc(p.x, p.y, r * (1.8 + 1.6 * (1 - n.flash)), 0, Math.PI * 2); ctx.fill();
+        if (!still) n.flash = Math.max(0, n.flash - dt * 1.6);
+      }
+      const g = ctx.createRadialGradient(p.x - r * .35, p.y - r * .35, r * .1, p.x, p.y, r);
+      g.addColorStop(0, hexA(base, .95 * d + .05)); g.addColorStop(1, hexA(base, .55 * d));
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill();
+      if (n.label && d > .35) {
+        ctx.font = `${n.label === "SOAR" ? 600 : 500} ${Math.max(9, 11 * p.s * 1.2)}px system-ui, sans-serif`;
+        ctx.fillStyle = hexA(colors.muted, .9 * d);
+        ctx.fillText(n.label, p.x, p.y + r + 12 * p.s + 4);
+      }
+    }
+    if (!still) requestAnimationFrame(frame);
+  }
+  resize();
+  addEventListener("resize", () => { resize(); if (still) frame(performance.now()); });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", readColors);
+  requestAnimationFrame(frame);
+})();
 </script>
 </body>
 </html>

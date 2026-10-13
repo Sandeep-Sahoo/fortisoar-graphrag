@@ -347,7 +347,8 @@ class Retriever:
             RETURN p.name AS name, p.trigger_type AS trigger_type, modules,
                    collect(CASE WHEN s IS NULL THEN null ELSE
                      {key: s.key, name: s.name, kind: s.kind, connector: op.connector, operation: op.name,
-                      has_secret: coalesce(s.has_secret, false), child: child.name, next: next} END) AS steps
+                      has_secret: coalesce(s.has_secret, false), child: child.name, child_uuid: child.uuid,
+                      next: next} END) AS steps
             """,
             uuid=uuid,
         )

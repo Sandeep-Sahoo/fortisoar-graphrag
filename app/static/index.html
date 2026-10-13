@@ -12,16 +12,17 @@
     --accent: #534AB7; --accent-bg: #EEEDFE; --accent-text: #3C3489; --danger: #A32D2D; --ok: #0F6E56;
     --pb: #7F77DD; --step: #B4B2A9; --op: #5DCAA5; --con: #1D9E75; --mod: #EF9F27; --doc: #D4537E; --coll: #378ADD;
     --edge: #b4b2a9; --active: #EF9F27; --pack: #D85A30; color-scheme: light;
+    --scene-a: #ece8fb; --scene-b: #f7f7f5; --scene-dot: 83,74,183; --scene-star: 83,74,183;  /* graph backgrounds, matching the sign-in screen */
   }
   /* theme: system preference unless the user picked light or dark (data-theme on <html>) */
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) { --bg: #1c1c1a; --panel: #262624; --sunk: #2f2f2c; --text: #ecebe6; --muted: #a3a29c; --border: #3a3a37;
             --accent: #AFA9EC; --accent-bg: #2f2b55; --accent-text: #CECBF6; --danger: #F09595; --ok: #5DCAA5;
-            --step: #5F5E5A; --edge: #5F5E5A; color-scheme: dark; }
+            --step: #5F5E5A; --edge: #5F5E5A; color-scheme: dark; --scene-a: #1e1a3c; --scene-b: #0f0e1c; --scene-dot: 175,169,236; --scene-star: 236,234,255; }
   }
   :root[data-theme="dark"] { --bg: #1c1c1a; --panel: #262624; --sunk: #2f2f2c; --text: #ecebe6; --muted: #a3a29c; --border: #3a3a37;
             --accent: #AFA9EC; --accent-bg: #2f2b55; --accent-text: #CECBF6; --danger: #F09595; --ok: #5DCAA5;
-            --step: #5F5E5A; --edge: #5F5E5A; color-scheme: dark; }
+            --step: #5F5E5A; --edge: #5F5E5A; color-scheme: dark; --scene-a: #1e1a3c; --scene-b: #0f0e1c; --scene-dot: 175,169,236; --scene-star: 236,234,255; }
   .log-view { max-height: 460px; overflow: auto; font-size: 12px; background: var(--sunk); border-radius: 10px; padding: 8px 10px; margin: 8px 0 0; }
   .log-view div { white-space: pre-wrap; border-bottom: 1px solid var(--border); padding: 3px 0; font-family: ui-monospace, Menlo, monospace; }
   .log-view .ERROR, .log-view .CRITICAL { color: var(--danger); }
@@ -58,6 +59,8 @@
   #home-main .bar { display: flex; gap: 6px; align-items: center; padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--panel); flex-wrap: wrap; }
   #home-main .bar strong { flex: 1; font-size: 13px; }
   #home-graph-wrap { position: relative; flex: 1; min-height: 320px; }
+  #home-graph-wrap, #graph-wrap { background: radial-gradient(ellipse at 50% 42%, var(--scene-a), var(--scene-b) 78%); }
+  .dot-grid { position: absolute; inset: 0; pointer-events: none; }
   #cy-home { position: absolute; inset: 0; }
   #home-side { overflow-y: auto; background: var(--panel); padding: 16px; display: flex; flex-direction: column; gap: 16px; }
   #home-side h2 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 0 0 8px; }
@@ -158,6 +161,125 @@
   .diagram .canvas svg { max-width: 100%; max-height: 640px; height: auto; animation: rise .3s ease-out; }
   .diagram .canvas[data-kind="sequence"] svg { max-width: none !important; max-height: none; }
   .diagram .spacer { flex: 1; }
+  /* zoom panel: − slider + Fit 100%, also Ctrl+wheel over the drawing */
+  .diagram .canvas.zoomable { overflow: auto; max-height: 70vh; }
+  .zoombar { display: inline-flex; align-items: center; gap: 4px; }
+  .zoombar button { padding: 3px 8px; min-width: 28px; }
+  .zoombar input[type=range] { width: 110px; accent-color: var(--accent); }
+  .zoombar output { min-width: 3.4em; font-size: 12px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .zoomable svg { animation: none !important; }
+  /* Linear: an animated walk down the step chain */
+  .diagram .linbar { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; padding: 6px 8px; border-top: 1px solid var(--border); background: var(--sunk); }
+  .diagram .linbar[hidden] { display: none; }
+  .diagram .linbar .linstep { font-size: 12.5px; min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .diagram .linbar .linstep b { color: var(--active); }
+  .diagram .linbar label { font-size: 12px; color: var(--muted); display: inline-flex; gap: 4px; align-items: center; }
+  .diagram .linbar input[type=range] { width: 80px; accent-color: var(--accent); }
+  .lin svg:not(#_) g.node { transition: opacity .35s ease, filter .35s ease; }
+  /* step player: the whole workflow stays readable behind the played path. Upcoming steps on the path are a little
+     soft; steps and links of the other scenarios are grey, dashed and half strength (names and branch labels stay) */
+  .lin svg:not(#_) g.node.lin-todo { opacity: .78; }
+  .lin svg:not(#_) g.node.lin-active { opacity: 1; filter: drop-shadow(0 0 8px var(--active)); animation: linpulse 1.4s ease-in-out infinite; }
+  .lin svg:not(#_) path.lin-todo { opacity: .6; }
+  .lin svg:not(#_) g.node.lin-off { opacity: .5; filter: grayscale(.9); }
+  .lin svg:not(#_) path.lin-off { opacity: .45; stroke-dasharray: 5 5 !important; }
+  .flow-overlay { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+  /* symbol index */
+  .symbols { border: 1px solid var(--border); border-radius: 12px; background: var(--panel); padding: 8px 10px; }
+  .symbols summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+  .symbols[open] summary { margin-bottom: 8px; }
+  .symidx { display: grid; gap: 6px; }
+  .sym-row { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 12.5px; }
+  .sym-ico { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--c) 65%, #fff), var(--c) 60%);
+             box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--c) 50%, #fff) inset; }
+  .sym-ico img { width: 15px; height: 15px; }
+  .sym-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+  .sym-desc { color: var(--muted); font-size: 11.5px; }
+  .sym-3d { color: var(--muted); font-size: 11px; white-space: nowrap; }
+  .sym-lines { display: grid; gap: 4px; margin-top: 10px; font-size: 12px; }
+  .sym-line { display: flex; gap: 6px; align-items: center; }
+  .sym-line b { font-weight: 600; }
+  .sym-line i { width: 30px; height: 0; flex: none; border-top: 2px solid var(--edge); position: relative; }
+  .sym-line i.line-arrow::after { content: ""; position: absolute; right: -2px; top: -5px; border: 4px solid transparent; border-left: 6px solid var(--edge); }
+  .sym-line i.line-dash { border-top-style: dashed; }
+  .sym-line i.line-calls { border-top: 3px solid var(--pb); }
+  .sym-line i.line-dot { border-top: 2px dotted var(--mod); }
+  .sym-line i.line-flow { border-top: 2px solid var(--edge); background: radial-gradient(circle, var(--accent) 3px, transparent 3.5px) 6px -4px / 12px 8px repeat-x; height: 8px; margin-top: -6px; }
+  .sym-line i.st-current { border-top: 4px solid var(--active); }
+  .sym-line i.st-done { border-top: 3px solid var(--accent); }
+  .sym-line i.st-complete { border-top: 4px solid var(--ok); }
+  .sym-line i.st-other { border-top: 2px dashed var(--muted); opacity: .7; }
+  .sym-note { color: var(--muted); font-size: 11.5px; margin: 8px 0 0; }
+  .guide .symidx { max-width: 620px; }
+  /* ? Help */
+  #home-main { position: relative; }
+  .help-pop { position: absolute; top: 56px; right: 12px; z-index: 30; width: min(360px, calc(100% - 24px)); background: var(--panel); color: var(--text);
+              border: 1px solid var(--border); border-radius: 12px; padding: 10px 14px 12px; box-shadow: 0 14px 40px rgba(0,0,0,.3); font-size: 13px; }
+  .help-pop[hidden] { display: none; }
+  .help-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+  .help-close { border: 0; background: none; padding: 2px 6px; }
+  .about-table td { padding: 2px 0; vertical-align: top; }
+  .about-table td:first-child { color: var(--muted); padding-right: 14px; white-space: nowrap; }
+  .help-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .help-links a { border: 1px solid var(--border); border-radius: 8px; padding: 4px 9px; text-decoration: none; color: var(--accent-text); font-size: 12.5px; }
+  .guide-tabs { margin: -8px 0 18px; }
+  .index-pop { position: fixed; top: 0; left: 0; right: auto; width: 360px; max-height: calc(100vh - 80px); overflow-y: auto; }
+  .sym-shape { width: 26px; height: 26px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.35)); }
+  #btn-home-index[aria-expanded="true"], #btn-graph-index[aria-expanded="true"], .dg-index[aria-expanded="true"] { background: var(--accent-bg); color: var(--accent-text); border-color: var(--accent); }
+  /* 3D views: 🔒 Lock, top right */
+  .g3-tools { position: absolute; top: 8px; right: 8px; z-index: 4; display: flex; gap: 6px; }
+  .g3-tools button { padding: 3px 9px; font-size: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 8px; color: var(--text); opacity: .9; }
+  .g3-tools button[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent-text); border-color: var(--accent); }
+  .settings-ref td { font-size: 13px; }
+  .settings-ref td:first-child { white-space: nowrap; }
+  /* diagram nodes: a soft shadow; the type badge sits on the top edge */
+  [data-mmd] svg g.node { filter: drop-shadow(0 2px 3px rgba(0,0,0,.22)); }
+  [data-mmd] svg g.node .nbadge { pointer-events: none; }
+  .graph3d { position: absolute; inset: 0; z-index: 3; overflow: hidden; background: radial-gradient(ellipse at 50% 42%, var(--scene-a), var(--scene-b) 78%); }
+  .graph3d > .g3-bg { position: absolute; inset: 0; pointer-events: none; }
+  .graph3d > div:not(.g3-labels):not(.g3-tools) { position: relative; }  /* the WebGL view above the stars and floor */
+  .g3-labels { position: absolute; inset: 0; pointer-events: none; z-index: 2; }
+  .g3-labels span { position: absolute; left: 0; top: 0; white-space: nowrap; font-size: 11.5px; font-weight: 600; color: var(--text);
+                    background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; opacity: .92; }
+  .g3-labels span.g3-main { font-size: 13px; border-color: var(--active); color: var(--active); }
+  .g3-labels span.g3-ghost { font-size: 10.5px; font-weight: 500; opacity: .8; padding: 0 5px; }  /* every step named, quietly */
+  .g3-labels span.g3-ghost.g3-off { opacity: .75; }
+  /* metric card on hover */
+  .mtip { font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; min-width: 170px; max-width: 290px; }
+  .mtip b { font-size: 12.5px; }
+  .mtip-sub { opacity: .75; font-size: 11px; margin-bottom: 3px; text-transform: capitalize; }
+  .mtip table { border-collapse: collapse; }
+  .mtip td { padding: 1px 0; vertical-align: top; }
+  .mtip td:first-child { opacity: .7; padding-right: 10px; white-space: nowrap; }
+  .mtip-float { position: absolute; z-index: 6; pointer-events: none; background: var(--panel); color: var(--text); border: 1px solid var(--border);
+                border-radius: 9px; padding: 7px 10px; box-shadow: 0 6px 22px rgba(0,0,0,.25); }
+  .mtip-float[hidden] { display: none; }
+  #btn-home-3d[aria-pressed="true"], #btn-graph-3d[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent-text); border-color: var(--accent); }
+  #home-main:has(.is-3d) #home-zoom, #graphpanel:has(.is-3d) #graph-zoom { display: none; }  /* the 2D zoom doesn't apply in 3D */
+  .flow-dot { fill: var(--accent); stroke: var(--panel); stroke-width: 1.2px; pointer-events: none; }
+  .lin svg:not(#_) path.lin-off + .flow-dot, .lin svg:not(#_) path.lin-off + .flow-dot + .flow-dot { display: none; }
+  .lin svg:not(#_) path.lin-flow + .flow-dot, .lin svg:not(#_) path.lin-flow + .flow-dot + .flow-dot { fill: var(--active); }
+  .flowdots-toggle[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent-text); border-color: var(--accent); }
+  .diagram .linbar .pick { color: var(--accent-text); font-weight: 600; }
+  /* Scenarios: the list of end-to-end paths */
+  .diagram .scnbar { border-top: 1px solid var(--border); background: var(--panel); padding: 8px; }
+  .diagram .scnbar[hidden] { display: none; }
+  .diagram .scnhead { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .diagram .scnlist { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; max-height: 168px; overflow-y: auto; }
+  .diagram .scnlist button { width: 100%; display: flex; gap: 8px; align-items: baseline; text-align: left; padding: 5px 8px; }
+  .diagram .scnlist button[aria-pressed="true"] { background: var(--accent-bg); color: var(--accent-text); border-color: var(--accent); }
+  .diagram .scn-id { font-weight: 700; color: var(--muted); min-width: 2.2em; font-variant-numeric: tabular-nums; }
+  .diagram .scn-name { flex: 1; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+  .diagram .scn-meta { font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+  .lin svg:not(#_) path.lin-flow { stroke-dasharray: 9 6; animation: linflow .5s linear infinite; }
+  /* a finished walk: the whole path glows in the success colour and flows from start to end */
+  .lin svg:not(#_) g.node.lin-complete { opacity: 1; animation: lincomplete 1.6s ease-in-out infinite; }
+  .lin svg:not(#_) path.lin-complete { opacity: 1; stroke-dasharray: 9 6 !important; animation: linflow .55s linear infinite; }
+  .lin svg:not(#_) path.lin-complete + .flow-dot, .lin svg:not(#_) path.lin-complete + .flow-dot + .flow-dot { fill: var(--ok); }
+  @keyframes lincomplete { 0%, 100% { filter: drop-shadow(0 0 3px var(--ok)); } 50% { filter: drop-shadow(0 0 10px var(--ok)); } }
+  .diagram .linbar .linstep b.done { color: var(--ok); }
+  @keyframes linflow { to { stroke-dashoffset: -15; } }
+  @keyframes linpulse { 50% { filter: drop-shadow(0 0 2px var(--active)); } }
 
   #composer { border-top: 1px solid var(--border); padding: 12px 16px; background: var(--panel); }
   #composer .row { display: flex; gap: 8px; align-items: flex-end; }
@@ -231,8 +353,7 @@
   #diagram-viewer .head { display: flex; gap: 8px; align-items: center; padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
   #diagram-viewer .head strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #diagram-viewer .body { flex: 1; overflow: auto; padding: 20px; display: flex; }
-  #diagram-viewer .body svg { margin: auto; width: 100%; height: 100%; max-width: none !important; max-height: none; }
-  #diagram-viewer .body.natural svg { width: auto; height: auto; }
+  #diagram-viewer .body svg { margin: auto; max-width: none !important; max-height: none; }
 
   /* catalog: every playbook / collection / connector / document with full details */
   #view-browse { display: grid; grid-template-columns: minmax(0, 1fr) minmax(340px, 460px); height: calc(100vh - 50px); }
@@ -436,6 +557,7 @@
     <a href="#home" data-view="home">Home</a>
     <a href="#browse/playbooks" data-view="browse">Catalog</a>
     <a href="#chat" data-view="chat">Chat</a>
+    <a href="#scenarios" data-view="scenarios" title="Every way a playbook can run end to end, played step by step">Scenarios</a>
     <a href="#develop" data-view="develop">Develop</a>
     <a href="#review" data-view="review">Review</a>
     <a href="#docs" data-view="docs">Docs</a>
@@ -464,13 +586,25 @@
       </span>
       <button id="btn-replay" title="Replay the overview animation">↺ Replay animation</button>
       <button id="btn-home-fit">Fit</button>
+      <button id="btn-home-reset" type="button" title="Put the graph back exactly as it was laid out: undo dragged nodes and focus rings, and fit it to the view">⟲ Reset</button>
+      <span class="zoombar" id="home-zoom" role="group" aria-label="Zoom"></span>
+      <button id="btn-home-index" type="button" title="Index: what each symbol means (follows the 2D / 3D view)" aria-haspopup="dialog" aria-expanded="false">◎ Index</button>
+      <button id="btn-home-3d" type="button" title="Show this graph in 3D: drag to rotate, wheel to zoom, right-drag to pan, click a node to fly to it" aria-pressed="false">🧊 3D</button>
+      <button type="button" class="flowdots-toggle" aria-pressed="false" title="Flow dots: a dot travels every link from its source to its destination, continuously">● Flow</button>
+      <button id="btn-home-help" type="button" aria-haspopup="dialog" aria-expanded="false" title="Help: version, owner contact and guides">? Help</button>
     </div>
+    <div id="help-pop" class="help-pop" role="dialog" aria-label="Help" hidden></div>
+    <div id="index-pop" class="help-pop index-pop" role="dialog" aria-label="Index" hidden></div>
     <div id="home-graph-wrap"><div id="cy-home"></div></div>
     <div class="legend-row" data-legend data-graph="cy-home" role="group" aria-label="Show or hide node types"></div>
   </div>
   <aside id="home-side">
     <div class="stats" id="stats"></div>
     <button class="primary big" id="btn-start-chat">Chat with your playbooks →</button>
+    <details class="symbols" id="home-symbols" open>
+      <summary>Symbols — what each icon, colour and shape means</summary>
+      <div id="home-symbols-body"></div>
+    </details>
     <div class="notice" id="pw-notice" hidden>You're signed in with the default <b>admin / admin</b> password. Set APP_USERNAME and APP_PASSWORD in .env before sharing this app.</div>
     <section>
       <h2>Selected</h2>
@@ -500,8 +634,79 @@
 <section id="view-guide" class="view" hidden>
   <nav id="guide-toc" aria-label="Guide contents"><h2>Guide</h2></nav>
   <div id="guide-body">
-  <article class="guide" id="guide">
-    <h1>How this app works</h1>
+  <nav class="tabs guide-tabs" aria-label="Guide">
+    <a href="#guide" data-guide="quick">Quick guide</a><a href="#guide/full" data-guide="full">Full reference</a>
+  </nav>
+  <article class="guide" id="guide-quick">
+    <h1>Quick guide</h1>
+    <p class="lead">FortiSOAR Graph RAG turns playbooks, the collections and solution packs they ship in, the connectors they call and the
+      documentation around them into one knowledge graph you can explore, ask questions of, and use to design and review automation.
+      This page is the short version; the <a href="#guide/full">Full reference</a> covers every feature and setting.</p>
+
+    <h2 id="q-can">1. What you can do</h2>
+    <ul>
+      <li><b>Explore</b> every playbook, connector and pack on an animated map (Home), in 2D or 🧊 3D.</li>
+      <li><b>Look things up</b> in searchable tables with linked detail pages (Catalog).</li>
+      <li><b>Ask in plain English</b> and get cited answers with diagrams of the playbooks involved (Chat), or search the graph without AI.</li>
+      <li><b>See every way a playbook can run</b> and play each scenario step by step (Scenarios).</li>
+      <li><b>Design a new playbook</b> with best practices built in, then export it (Develop).</li>
+      <li><b>Score playbooks</b> against best practices, yours and Fortinet's (Review), and <b>document</b> them (Docs).</li>
+      <li><b>Find risks and gaps</b>: connector impact, duplicates, call chains, security findings (Insights).</li>
+    </ul>
+
+    <h2 id="q-screens">2. The screens</h2>
+    <table>
+      <tr><th>Screen</th><th>Use it to…</th></tr>
+      <tr><td><b>Home</b></td><td>See the whole estate as a graph (Ecosystem, Alerts → Playbooks, Incidents → Playbooks, All playbooks); click a node for details, double-click to focus its links. <b>? Help</b> shows the version and who to contact.</td></tr>
+      <tr><td><b>Catalog</b></td><td>Browse packs, playbooks, collections, connectors and documents; open a playbook's diagrams and its Scenarios page.</td></tr>
+      <tr><td><b>Chat</b></td><td>Ask questions; each answer has a diagram card and the graph of the cited playbooks on the right. Tick <i>Graph only</i> for a no-AI search.</td></tr>
+      <tr><td><b>Scenarios</b></td><td>Pick a playbook (or a Develop design) and play any of its end-to-end scenarios.</td></tr>
+      <tr><td><b>Develop</b></td><td>Describe a use case; confirm a proposed design; get the playbook, its review score and a customer document.</td></tr>
+      <tr><td><b>Review</b></td><td>Upload your playbooks or connect a Git repo; read the score, findings and fixes; manage best practices.</td></tr>
+      <tr><td><b>Docs</b></td><td>Generate documentation for a playbook, collection, pack or build (with or without AI).</td></tr>
+      <tr><td><b>Insights</b></td><td>Connector impact, duplicates, coverage gaps, call chains, security and changes.</td></tr>
+      <tr><td><b>GitHub</b></td><td>See what was downloaded from GitHub and ingest repos into the graph.</td></tr>
+      <tr><td><b>Guide · Settings</b></td><td>This manual · every setting, operations, logs and users.</td></tr>
+    </table>
+
+    <h2 id="q-graphs">3. Working with the graphs</h2>
+    <ul>
+      <li><b>Hover</b> a node: its direct neighbours blink, the links glow, only their names show, and a card lists the node's metrics.</li>
+      <li><b>Click</b> for details (✕ hides them); <b>double-click</b> to pull its direct links into a readable ring (again, or Esc, to undo); <b>right-click a playbook</b> to open its scenarios.</li>
+      <li><b>Zoom</b> with − / slider / + / 1:1 or the mouse wheel; <b>Fit</b> frames everything; <b>⟲ Reset</b> puts every node back where the layout placed it.</li>
+      <li><b>🧊 3D</b> shows the same graph in 3D (drag to rotate, wheel to zoom, right-drag to pan, drag a node to move it, click a node to fly to it); <b>🔒 Lock</b> (top right of every 3D view) freezes it. <b>◎ Index</b>, next to 3D, explains every symbol for the view you are in.</li>
+      <li><b>● Flow</b> sends dots along every link from source to destination; it is one switch for the whole app.</li>
+      <li><b>Legend chips</b> hide or show node types; <b>▶ Play</b> (chat graph) walks a playbook's steps with a note per step.</li>
+    </ul>
+
+    <h2 id="q-diagrams">4. Diagrams and scenarios</h2>
+    <ul>
+      <li>Every playbook diagram card offers <b>Flowchart</b>, <b>Sequence</b>, <b>☰ Linear</b> (steps in order, animated) and <b>⑂ Scenarios</b> (every end-to-end path). <b>This playbook / + Child playbooks</b> chooses whether the steps of the child playbooks it calls are drawn inline too (in labelled boxes, up to 3 levels); every view, the scenarios and 3D then include them.</li>
+      <li>Switch <b>↕ Vertical / ↔ Horizontal</b>, zoom, and use the step player: ◀ / ▶ Play / ▶, speed, and the <b>▣ Whole</b> or <b>◎ Follow</b> camera.</li>
+      <li>While a scenario plays, the rest of the workflow stays visible in grey; when it finishes, its whole path lights up in green.</li>
+      <li><b>🧊 3D</b> works on diagrams too, driven by the same player. Hover a step for its metrics (scenarios that use it, where it sits in the current one).</li>
+      <li>In Chat, <b>⇥ Open on right</b> moves the diagram to the right-hand pane; <b>▾ Minimise</b> shrinks it to a bar, <b>✕ Close</b> puts it back. Elsewhere <b>⤢ Expand</b> opens it full screen.</li>
+    </ul>
+
+    <h2 id="q-symbols">5. Symbols</h2>
+    <p>The same icon, colour and 3D shape mean the same thing everywhere. On the Home and chat graphs every step is grey with its kind's icon; diagram steps use the colours below.</p>
+    <div id="gq-symbols"></div>
+
+    <h2 id="q-keys">6. Keyboard and mouse</h2>
+    <table>
+      <tr><td><kbd>Enter</kbd> / <kbd>Shift</kbd>+<kbd>Enter</kbd></td><td>Send a chat message / new line</td></tr>
+      <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>Previous / next step while playing (graph panel, or a diagram card with focus)</td></tr>
+      <tr><td><kbd>Space</kbd></td><td>Pause / resume ▶ Play</td></tr>
+      <tr><td><kbd>Esc</kbd></td><td>Close the full-screen viewer, stop ▶ Play, undo a focus ring, or restore an expanded graph</td></tr>
+      <tr><td><kbd>Ctrl</kbd> + wheel</td><td>Zoom a diagram around the pointer</td></tr>
+      <tr><td>Double-click</td><td>Focus a node's direct links (graphs) · rename a chat (sidebar)</td></tr>
+    </table>
+
+    <h2 id="q-help">7. Help and contact</h2>
+    <div id="gq-about" class="muted">Loading…</div>
+  </article>
+  <article class="guide" id="guide" hidden>
+    <h1>Full reference</h1>
     <p class="lead">A knowledge graph of FortiSOAR automation: playbooks, the collections and solution packs they ship in, the connectors they call, and the documentation around them, which you can explore visually and question in plain English.</p>
     <div class="cards" id="g-cards"></div>
     <div class="callout" id="g-status">Loading live statistics…</div>
@@ -513,17 +718,19 @@
       <li><b>Home</b>: an animated map of the whole ecosystem or of all playbooks.</li>
       <li><b>Catalog</b>: searchable tables of every solution pack, playbook, collection, connector and document, with full detail pages that link to each other.</li>
       <li><b>Chat</b>: ask questions in plain English. Answers are built only from the graph and cite their sources.</li>
-      <li><b>Graph panel and diagrams</b>: per-playbook graphs, step-by-step animation, flowcharts and sequence diagrams.</li>
+      <li><b>Graph panel and diagrams</b>: per-playbook graphs, step-by-step animation, flowcharts, sequence diagrams and an animated linear view.</li>
+      <li><b>Scenarios</b>: every way a playbook (or a Develop design) can run end to end, one per combination of decisions and approvals, played step by step on its flowchart.</li>
     </ul>
     <p>The approach is <b>Graph RAG</b> (retrieval-augmented generation over a graph): search finds the relevant nodes, the graph supplies their context (steps, callers, connectors, docs), and a language model writes the answer from that context only.</p>
 
     <h2 id="g-tour">2. Quick tour of the screens</h2>
     <table>
       <tr><th>Screen</th><th>What you see</th><th>Things to try</th></tr>
-      <tr><td><b>Home</b></td><td>Stat tiles (click to open the Catalog), the circular overview graph, the selected-node panel and a list of packs or collections.</td><td>Double-click a node to pull its direct links into a readable ring. Use ↺ Replay to re-run the animation. Click the legend to hide or show node types.</td></tr>
-      <tr><td><b>Catalog</b></td><td>Tabs for solution packs, playbooks, collections, connectors and documents, each with search, filter and sortable columns, plus a detail panel.</td><td>Click a row. Every name in a detail panel is a link. Open the inline flowchart or sequence diagram for a playbook. Use Show on Home and Ask in chat.</td></tr>
-      <tr><td><b>Chat</b></td><td>Saved conversations on the left, the thread in the middle, and the graph of the cited playbooks on the right.</td><td>Ask a question, then a follow-up ("which of those need approval?"). Click a citation chip. Press ▶ Play to walk through a playbook.</td></tr>
-      <tr><td><b>Develop</b></td><td>A chat that designs a new playbook with you: questions about the use case, a proposed workflow and sequence diagram, changes on request, then the developed playbook, its review score and a customer document.</td><td>Describe a use case, press Continue through the suggestions, ask for a change ("notify on Teams"), then Confirm &amp; develop and open the Customer view.</td></tr>
+      <tr><td><b>Home</b></td><td>Stat tiles (click to open the Catalog), the circular overview graph, the selected-node panel and a list of packs or collections.</td><td>Hover a node to make its directly linked nodes blink, the links between them glow and only their names show. Double-click a node to pull its direct links into a readable ring. Use ↺ Replay to re-run the animation. Zoom with − / slider / + / 1:1 (or the mouse wheel) and Fit; ⟲ Reset puts every node back where the layout placed it; 🧊 3D shows the graph in 3D (drag to rotate, wheel to zoom, right-drag to pan, click a node to fly to it; hover a node to make its directly linked nodes blink, the links between them glow, and show the names of just those nodes); ● Flow sends dots along the links (particles in 3D). In both 2D and 3D, only the links in play carry dots: during ▶ Play the walked path (the current link in orange), with a focus ring only its links; faded links stay still. Click the legend to hide or show node types.</td></tr>
+      <tr><td><b>Catalog</b></td><td>Tabs for solution packs, playbooks, collections, connectors and documents, each with search, filter and sortable columns, plus a detail panel.</td><td>Click a row. Every name in a detail panel is a link. Open the inline Flowchart, Sequence, ☰ Linear or ⑂ Scenarios diagram for a playbook, or Scenarios page ↗. Use Show on Home and Ask in chat.</td></tr>
+      <tr><td><b>Chat</b></td><td>Saved conversations on the left, the thread in the middle, and the graph of the cited playbooks on the right.</td><td>Ask a question, then a follow-up ("which of those need approval?"). Click a citation chip. Press ▶ Play to walk through a playbook. ⤢ Expand on a diagram moves it to the right-hand panel (the graph minimises; ▴ Show graph brings it back). ✕ hides a node's details.</td></tr>
+      <tr><td><b>Scenarios</b></td><td>Playbooks (or Develop designs) on the left; on the right the selected one's scenarios beside its diagram, with a step player.</td><td>Search and pick a playbook, then a scenario. Switch ↕ Vertical / ↔ Horizontal and ▣ Whole / ◎ Follow, zoom, or ⤢ Expand to full screen. Reach it from the menu or the ⑂ links in Catalog, Review, Develop, Home, Chat and Insights.</td></tr>
+      <tr><td><b>Develop</b></td><td>A chat that designs a new playbook with you: questions about the use case, a proposed workflow and sequence diagram, changes on request, then the developed playbook, its review score and a customer document.</td><td>Describe a use case, press Continue through the suggestions, ask for a change ("notify on Teams"), then Confirm &amp; develop and open the Customer view. ⑂ Scenarios shows every path through the proposed design.</td></tr>
       <tr><td><b>Docs</b></td><td>Playbook documentation in the FortiSOAR playbook-docs format: overview and why it matters to the SOC team, dependencies, connectors, collection table, per-playbook Flow at a Glance and Detailed Flow diagrams with a phased step-by-step, operational notes, record sets and an append-only version history.</td><td>Press 📄 Document on a playbook, collection or solution pack (Catalog), a playbook or source (Review) or a build (Develop). Pick <b>Without AI</b> (free) or <b>With AI</b> (1 request per playbook). Download Markdown or print to PDF.</td></tr>
       <tr><td><b>Review</b></td><td>Your own playbooks (uploaded or from a connected Git repo), their best-practice reviews and scores, and the best-practice catalogue.</td><td>Upload an export, open a review, answer the manual checklist, set the status. Add your own best practice on the Best practices tab.</td></tr>
       <tr><td><b>Insights</b></td><td>Connector impact, duplicate playbooks, coverage gaps, call chains, security findings and recent changes, all computed from the graph.</td><td>Pick a connector to see its blast radius. Open a deep call chain as a tree. Export any table as CSV.</td></tr>
@@ -642,6 +849,8 @@
     <h3>Colours and shapes</h3>
     <p>Every node is a circle; colour and size tell the types apart. The same legend appears under each graph, and clicking a legend chip hides or shows that type everywhere.</p>
     <table id="g-legend"></table>
+    <h3>Symbol index</h3>
+    <div id="g-symbols"></div>
     <h3>Home</h3>
     <ul>
       <li><b>Ecosystem map</b> (large graphs): solution packs in the centre and the connectors their playbooks use on the outer ring, with dashed edges for pack dependencies. Thousands of individual playbooks can't be drawn readably, so this view is used once there are more than 300.</li>
@@ -653,8 +862,31 @@
     <p>Each tab lists one node type with counts that come from the graph (steps, callers, runbooks, connectors, samples…). Detail panels show the node's neighbourhood as links: a playbook shows its steps (with connector operations and ⚠ secret flags), calls, callers, runbooks and vendor docs; a connector shows each action and the playbooks and steps that use it; a document shows its full text and what links to it. Large tabs render 300 rows at a time; search or filter to narrow them.</p>
     <h3>Graph panel (Chat)</h3>
     <p>Shows the neighbourhood of the playbooks an answer cites: collection, trigger modules, steps (dashed NEXT edges), connector operations and connectors, called and calling playbooks, and linked documents. <b>▶ Play</b> walks through the steps in execution order, in Auto (speed up to 10×) or Manual mode with Prev and Next (or the arrow keys), with a note above the graph explaining each step from its actual arguments.</p>
+    <p>Click a node to see its properties below the graph; ✕ hides them until you click another node.</p>
     <h3>Diagrams</h3>
-    <p>Generated from the graph, never by the language model: a <b>flowchart</b> of the step logic (circles, the trigger as a double circle, branch labels, approvals, child playbooks, secrets outlined in red) and a <b>sequence diagram</b> showing who talks to whom (trigger, then playbook, then each connector, child playbook and analyst). Use ⤢ Expand to view either full screen.</p>
+    <p>Generated from the graph, never by the language model. Every diagram card offers four views:</p>
+    <ul>
+      <li><b>Flowchart</b>: the step logic (circles, the trigger as a double circle, branch labels, approvals, child playbooks, secrets outlined in red).</li>
+      <li><b>Sequence</b>: who talks to whom (trigger, then playbook, then each connector, child playbook and analyst).</li>
+      <li><b>☰ Linear</b>: every step in execution order, one numbered box after another so nothing overlaps (branch labels stay on the arrows), animated step by step.</li>
+      <li><b>⑂ Scenarios</b>: every end-to-end path, played on the flowchart (see <i>Scenarios</i> below).</li>
+    </ul>
+    <p>Controls on every card:</p>
+    <ul>
+      <li><b>↕ Vertical / ↔ Horizontal</b> lays Flowchart, Linear and Scenarios out top to bottom or left to right (the app remembers your choice; the current step is kept).</li>
+      <li><b>Zoom</b>: − / slider (10–400%) / +, <b>Fit</b> and <b>1:1</b>, or Ctrl + mouse wheel over the drawing (zooms around the pointer).</li>
+      <li><b>Node look</b>: in 2D every node carries its type's icon on a lit two-tone fill (diagram steps get an icon badge); in 3D each type has its own glossy, softly glowing shape — cone trigger, diamond decision, dodecahedron approval, cube connector, ringed sphere child playbook, sphere playbook, cylinder module, sheet document, torus collection, gem solution pack.</li>
+      <li><b>🧊 3D</b> (Flowchart, Linear and Scenarios): the steps as a layered 3D graph in step order (top-down or left-right with ↕ / ↔). The step player drives it: the current step glows, pulses and keeps its name, steps off the chosen scenario fade, ● Flow runs only along the path, ◎ Follow flies the camera to each step and ▣ Whole keeps the whole graph in view. Drag to rotate, wheel to zoom, right-drag to pan; hover a step to see its direct neighbours; click a step on the path to jump there.</li>
+      <li><b>Step player</b> (Linear and Scenarios): ◀ / ▶ Play–❚❚ Pause / ▶ (or ← / →), a speed slider (0.25–4×) and the current step with its type, connector operation and the branch it takes. The current step glows orange and the link into it moves, done steps are outlined in purple, later ones are faded.</li>
+      <li><b>● Flow</b> (on every diagram card, in the full-screen view, in Develop and on the graph panel): a dot travels every link from its source to its destination, continuously, so you can see which way the flow goes. In Linear and Scenarios only the played path carries dots (orange on the link being walked); in the graph panel dots run along every link too, and during ▶ Play only along the walked path (orange on the link being walked). Home has the same ● Flow button. One switch for the whole app, remembered per browser; downloads never include the dots.</li>
+      <li><b>Hover a step</b> (2D or 3D) for its metrics: type, operation, links in / out, branches and where they lead, how many scenarios use it, and where it sits in the scenario being played (step k of n, current / done / upcoming, or not on this path). Hovering a node on the Home or chat graph shows its type, links, what it is linked to and its key details.</li>
+      <li><b>Camera</b>: <b>▣ Whole</b> fits the entire drawing and keeps it still while the steps light up; <b>◎ Follow</b> zooms in and glides along with the current step (hawk-eye view).</li>
+      <li><b>⤢ Expand</b> (<b>⇥ Open on right</b> in Chat): in Chat the diagram moves to the right-hand panel at the same scenario and step, the graph minimises to its toolbar and the card in the answer collapses. <b>▾ Minimise</b> shrinks the docked diagram to its title bar and brings the graph back (<b>▴ Restore</b> opens it again); “Show here” or ✕ Close puts it back in the answer; ⛶ Full screen goes further. Elsewhere it opens full screen with all the controls, including the scenario list. ⤓ SVG / PNG download the drawing.</li>
+    </ul>
+    <h3 id="g-scenarios">Scenarios</h3>
+    <p>A scenario is one complete run of a playbook: from its trigger to a final step, taking one branch at every decision and one option at every approval. The app follows the playbook's <code>NEXT</code> links and lists every combination (up to 100), named after the branches it takes, e.g. <i>#1 Yes → Approve → Done · 6 steps · ends at Close</i>; hover a row for the decisions it makes. A playbook with no branches has a single <i>Main path</i>. A branch that jumps back to an earlier step ends the scenario there, marked <i>↺ loops back</i>, so nothing runs forever.</p>
+    <p>Pick a scenario to play it on the flowchart: the whole workflow stays visible behind it (the other scenarios' steps and links in grey, dashed, with their names and branch labels), while the selected path plays in colour with ● Flow dots only along it; the step bar says which branch is taken (“→ No”) and, at the end, where the run finishes or which step it loops back to. When the walk finishes, its whole path lights up in green (2D and 3D): every step glows and is named, the links flow from start to end, and the view pulls back to show the entire path; ↺ Replay or ◀ returns to step-by-step.</p>
+    <p>Open them from the <b>Scenarios</b> menu (all playbooks, plus the Develop designs tab for designs with a proposed workflow), from the ⑂ Scenarios option on any diagram card, or from the ⑂ links in Catalog, Review, Develop, Home, the Chat graph panel and Insights. Each playbook has its own link (<code>#scenarios/&lt;playbook&gt;</code>) to share or bookmark.</p>
 
     <h2 id="g-answers">8. How chat answers are produced</h2>
     <ol>
@@ -771,7 +1003,66 @@
 .venv/bin/python -m app.cli sync-sources                    # re-pull Git sources, re-review uploads (no AI)
 .venv/bin/python -m app.cli scheduled-sync --force          # GitHub re-download (+ optional re-ingest, 0 embeddings)
 .venv/bin/python -m app.cli links list | approve | reject | add   # review internal-doc links
-.venv/bin/python -m app.cli serve                           # web UI on :8000</pre>
+.venv/bin/python -m app.cli serve                           # web UI on :8000
+scripts/backup.sh                                            # back up both databases, data/ and .env (macOS / Linux)
+scripts/restore.sh backups/graphrag-&lt;date&gt;                 # restore a backup (macOS / Linux)
+powershell -ExecutionPolicy Bypass -File scripts\restore.ps1 backups\graphrag-&lt;date&gt;   # restore on Windows</pre>
+    <p>On Windows use <code>.venv\Scripts\python.exe</code> instead of <code>.venv/bin/python</code>, and set <code>PYTHONUTF8=1</code> once (see OPERATIONS.md).</p>
+
+    <h2 id="g-features">17. Every feature, screen by screen</h2>
+    <h3>Header (every screen)</h3>
+    <ul>
+      <li><b>Workspace picker</b> (Fortinet / Marlink): every tab follows it; each workspace has its own database and data.</li>
+      <li><b>Menu</b>: Home, Catalog, Chat, Scenarios, Develop, Review, Docs, Insights, GitHub, Guide, Settings (each has its own link you can bookmark or share).</li>
+      <li><b>Mode badge</b> (mode and answer model), <b>usage chip</b> (today's answers and embeddings against the daily limits), signed-in user, <b>◐ / ☀ / ☾</b> theme, <b>⏻ Sign out</b>.</li>
+    </ul>
+    <h3>Sign-in</h3>
+    <ul><li>Username and password from Settings → Security (APP_USERNAME / APP_PASSWORD). The page shows a moving 3D automation network behind the form; it follows the theme and holds still when the system asks for reduced motion.</li></ul>
+    <h3>Home</h3>
+    <ul>
+      <li><b>Views</b>: Ecosystem (packs and the connectors their playbooks use), Alerts → Playbooks, Incidents → Playbooks, All playbooks; the default for large graphs is set by <i>Home: switch to ecosystem above N playbooks</i>.</li>
+      <li><b>Toolbar</b>: ↺ Replay animation, Fit, ⟲ Reset, zoom (− / slider / + / level / 1:1), 🧊 3D, ● Flow, <b>? Help</b> (version, commit, owner contact, links to this guide).</li>
+      <li><b>Graph</b>: hover = neighbours blink, links glow, names and a metric card; click = details on the right; double-click = focus ring; legend chips filter node types (remembered per browser).</li>
+      <li><b>Side panel</b>: stat tiles (open the Catalog), Chat with your playbooks, the <b>Symbols</b> index (open on every visit), the selected node (Ask in chat, Focus links, Show its playbooks, Open in Catalog, ⑂ Scenarios), packs or collections.</li>
+    </ul>
+    <h3>Catalog</h3>
+    <ul>
+      <li>Tabs: Solution packs, Playbooks, Collections, Connectors, Documents; search, filter, sortable columns, ↻ reload; 300 rows at a time.</li>
+      <li>Playbook page: trigger, steps (with operations and ⚠ secret flags), calls and callers, runbooks, vendor docs; inline Flowchart / Sequence / ☰ Linear / ⑂ Scenarios; Scenarios page ↗; Show on Home; Ask in chat; 📄 Document; exports.</li>
+      <li>Connector page: every operation and the playbooks and steps using it; document page: full text and what links to it.</li>
+    </ul>
+    <h3>Chat</h3>
+    <ul>
+      <li>Sessions in the sidebar (double-click to rename, 🔗 copy a link); the live pipeline Understand → Search → Graph → Answer; citations [C#] [D#] [V#] open their sources.</li>
+      <li><b>Graph only (no AI)</b> search with filters (pack, connector, trigger, module, origin), saved searches and editable synonyms.</li>
+      <li><b>Diagram cards</b> on every cited playbook: Flowchart, Sequence, ☰ Linear, ⑂ Scenarios; ↕ / ↔; ● Flow; 🧊 3D; zoom with ⟲ Reset; <b>⇥ Open on right</b> (docks it: ▾ Minimise / ▴ Restore, ✕ Close, ⛶ Full screen); ▶ Animate (walks it in the graph panel).</li>
+      <li><b>Graph panel</b>: ▶ Play (Auto / Manual, speed up to 10×, a note per step), All, Fit, ⟲ Reset, zoom, 🧊 3D, ⤢ Expand, ⤓ PNG, ● Flow, Clear; legend chips; node details with ✕ to hide.</li>
+    </ul>
+    <h3>Scenarios</h3>
+    <ul>
+      <li>Left: search your playbooks, or switch to <b>Develop designs</b>. Right: the scenario list beside the diagram, with all diagram controls.</li>
+      <li>Each scenario = one combination of decision branches and approval options (up to 100; loops end the path, marked ↺). The played path is in colour, the other paths grey and dashed; the current step glows orange, done steps are outlined purple, and a finished path turns green.</li>
+      <li>Hover a step for its metrics: type, operation, links, branches and where they lead, how many scenarios use it, and its place in the current one.</li>
+    </ul>
+    <h3>Develop</h3>
+    <ul><li>Guided or AI conversation → questions with suggestions → proposed design (Workflow, Sequence, At a glance; ● Flow; ⑂ Scenarios) → change requests or panel edits (each a new version) → ✅ Confirm &amp; develop → import JSON, review score, 👁 customer view, Send to Review.</li></ul>
+    <h3>Review</h3>
+    <ul><li>Your playbooks (upload exports or connect Git), Fortinet scoring, best practices (built-in rules on/off, weight, severity; your own manual or automatic checks; import from the other workspace), each review's score, grade, verdict, findings with fixes, manual checklist, status and history; ⑂ Scenarios, 📄 Document, ⤓ .md / .csv, 🔗 link.</li></ul>
+    <h3>Docs, Insights and GitHub</h3>
+    <ul>
+      <li><b>Docs</b>: documentation for a playbook, collection, pack, source or build, without AI (free) or with AI (1 request per playbook); Markdown or print to PDF; version history.</li>
+      <li><b>Insights</b>: connector impact, duplicates, coverage gaps, call chains (with a tree), security, changes; every table exports to CSV; ⑂ next to each playbook opens its scenarios.</li>
+      <li><b>GitHub</b>: downloaded repos with what's loaded and embedded, ingest selected repos (with an embedding cap), history with playbook diffs, the embedding planner.</li>
+    </ul>
+    <h3>Settings</h3>
+    <ul><li>Configuration (every setting below, validated and applied without a restart; secrets are write-only), Operations (fetch, ingest, derive links, link docs, indexes, wipe — with live logs and cancel), doc-link review, connection tests, users and roles, audit log, logs (filter by level or request ID), caches, and browser preferences (default Home view, animation speed and mode, hidden node types).</li></ul>
+
+    <h2 id="g-settings">18. All settings</h2>
+    <p>Change these on <b>Settings → Configuration</b> (General applies to every workspace; database, company name, redaction terms and Git token are per workspace). They are stored in <code>.env</code>; secret values are never shown, only whether they are set. Settings marked ⚠ need a wipe and re-ingest.</p>
+    <div id="g-settings-ref" class="muted">Loading…</div>
+
+    <h2 id="g-about">19. Version and contact</h2>
+    <div id="g-about-info" class="muted">Loading…</div>
   </article>
   </div>
 </section>
@@ -807,6 +1098,7 @@
 </section>
 
 <section id="view-develop" class="view" hidden></section>
+<section id="view-scenarios" class="view" hidden></section>
 <section id="view-review" class="view" hidden></section>
 <section id="view-docs" class="view" hidden></section>
 <section id="view-insights" class="view" hidden></section>
@@ -894,14 +1186,21 @@
   </section>
 
   <section id="graphpanel">
+    <div id="scn-dock" hidden></div>
     <div class="bar">
       <span id="graph-title">Graph</span>
+      <button id="btn-graph-restore" title="Close the diagram on the right and show the graph again">▴ Show graph</button>
       <button id="btn-play" title="Walk through the playbook's steps in execution order" disabled>▶ Play</button>
       <button id="btn-overview" title="Show every playbook in this graph">All</button>
       <button id="btn-fit">Fit</button>
+      <button id="btn-graph-reset" type="button" title="Put the graph back exactly as it was laid out: undo dragged nodes and focus rings, and fit it to the view">⟲ Reset</button>
+      <span class="zoombar" id="graph-zoom" role="group" aria-label="Zoom"></span>
+      <button id="btn-graph-index" type="button" title="Index: what each symbol means (follows the 2D / 3D view)" aria-haspopup="dialog" aria-expanded="false">◎ Index</button>
+      <button id="btn-graph-3d" type="button" title="Show this graph in 3D: drag to rotate, wheel to zoom, right-drag to pan, click a node to fly to it" aria-pressed="false">🧊 3D</button>
       <button id="btn-clear">Clear</button>
       <button id="btn-expand" title="Enlarge the graph to fill the window (Esc to restore)" aria-pressed="false">⤢ Expand</button>
       <button id="btn-graph-png" title="Download the graph as a PNG image">⤓ PNG</button>
+      <button type="button" class="flowdots-toggle" aria-pressed="false" title="Flow dots: a dot travels the link being walked in ▶ Play (and every diagram link) from its source to its destination, continuously">● Flow</button>
     </div>
     <div id="player" hidden>
       <div class="controls">
@@ -925,14 +1224,15 @@
       <div id="graph-empty">Answers show the playbooks they cite here. Use ▶ Play to walk through a playbook step by step.</div>
     </div>
     <div id="legend" class="legend-row" data-legend data-graph="cy" role="group" aria-label="Show or hide node types"></div>
-    <div id="details" class="muted">Click a node to see its properties. Double-click a playbook to expand it.</div>
+    <div id="details" class="muted"><button type="button" class="details-close" title="Hide the details (they come back when you click a node)" aria-label="Hide details">✕</button>Click a node to see its properties. Double-click a playbook to expand it.</div>
   </section>
 </div>
 
 <div id="diagram-viewer" hidden role="dialog" aria-modal="true" aria-label="Diagram">
   <div class="head">
     <strong id="viewer-title"></strong>
-    <button id="viewer-size" title="Switch between fit-to-window and actual size">Actual size</button>
+    <span class="zoombar" id="viewer-zoom"></span>
+    <button type="button" class="flowdots-toggle" aria-pressed="false" title="Flow dots: a dot travels every link from its source to its destination, continuously">● Flow</button>
     <button id="viewer-svg" title="Download this diagram as SVG">⤓ SVG</button>
     <button id="viewer-png" title="Download this diagram as PNG">⤓ PNG</button>
     <button id="viewer-close" title="Close (Esc)">✕ Close</button>
@@ -966,7 +1266,88 @@ mermaid.initialize({ ...MERMAID_BASE, theme: isDark() ? "dark" : "default" });
 async function drawMermaid(el, code) {
   el.dataset.mmd = code;
   el.innerHTML = (await mermaid.render(`mmd-${++diagramSeq}`, code)).svg;
+  decorateDiagram(el);
+  addFlowDots(el);
+  el.dispatchEvent(new CustomEvent("diagram-drawn"));
 }
+
+/* ---- Flow dots ("● Flow"): a dot travels every link from its source to its destination, continuously.
+   One preference for the whole app; any ● Flow button switches it everywhere. */
+let flowDots = store.get("graphrag.dots") === "1";
+const SVG_NS = "http://www.w3.org/2000/svg";
+function addFlowDots(root) {
+  if (!root) return;
+  root.querySelectorAll(".flow-dot").forEach(d => d.remove());
+  if (!flowDots || reducedMotion) return;
+  // flowchart / linear links are <path>s drawn source -> target; sequence messages are <line>s sender -> receiver
+  const links = new Set(root.querySelectorAll(".edgePaths path, path.flowchart-link, line.messageLine0, line.messageLine1"));
+  links.forEach(el => {
+    let d, len;
+    if (el.tagName === "line") {
+      const [x1, y1, x2, y2] = ["x1", "y1", "x2", "y2"].map(a => +el.getAttribute(a) || 0);
+      d = `M${x1},${y1} L${x2},${y2}`;
+      len = Math.hypot(x2 - x1, y2 - y1);
+    } else {
+      d = el.getAttribute("d");
+      try { len = el.getTotalLength(); } catch { len = 150; }
+    }
+    if (!d || !(len > 4)) return;
+    const dur = Math.max(1.2, len / 110);  // same speed on every link
+    const count = len > 260 ? 2 : 1;       // long links carry two dots, evenly spaced
+    for (let k = count - 1; k >= 0; k--) {
+      const dot = document.createElementNS(SVG_NS, "circle");
+      dot.setAttribute("r", "4.5");
+      dot.setAttribute("class", "flow-dot");
+      const move = document.createElementNS(SVG_NS, "animateMotion");
+      move.setAttribute("path", d);  // the link's own geometry, so ids that repeat across diagrams don't matter
+      move.setAttribute("dur", `${dur.toFixed(2)}s`);
+      move.setAttribute("begin", `${(-dur * k / count).toFixed(2)}s`);
+      move.setAttribute("repeatCount", "indefinite");
+      dot.appendChild(move);
+      el.after(dot);  // right after its link, so CSS can hide it with the link
+    }
+  });
+}
+/* Diagram steps get a small coloured badge with their type's icon, on the top edge of the node. Keyed by the
+   Mermaid classDef names the diagrams use (playbook steps, and the Guide's graph-model diagram). */
+const DIAGRAM_BADGES = {
+  trigger: ["trigger", "--pb"], decision: ["decision", "--mod"], approval: ["approval", "--doc"], connector: ["connector", "--con"],
+  reference: ["reference", "--coll"], step: ["step", "--step"], pb: ["playbook", "--pb"], coll: ["collection", "--coll"],
+  pack: ["pack", "--pack"], op: ["operation", "--op"], con: ["connector", "--con"], mod: ["module", "--mod"], doc: ["doc", "--doc"],
+};
+function decorateDiagram(root) {
+  root.querySelectorAll("svg g.node").forEach(g => {
+    const cls = [...g.classList].find(c => DIAGRAM_BADGES[c]);
+    if (!cls || g.querySelector(":scope > .nbadge")) return;
+    let box;
+    try { box = g.getBBox(); } catch { return; }
+    if (!box?.width) return;
+    const [icon, colorVar] = DIAGRAM_BADGES[cls];
+    const badge = document.createElementNS(SVG_NS, "g");
+    badge.setAttribute("class", "nbadge");
+    badge.setAttribute("transform", `translate(${box.x + box.width / 2},${box.y + 2})`);
+    const disc = document.createElementNS(SVG_NS, "circle");
+    disc.setAttribute("r", "9.5");
+    disc.setAttribute("style", `fill:${css(colorVar)};stroke:${css("--panel")};stroke-width:2`);
+    const glyph = document.createElementNS(SVG_NS, "path");
+    glyph.setAttribute("d", NODE_ICONS[icon]);
+    glyph.setAttribute("transform", "translate(-6.5,-6.5) scale(0.54)");
+    glyph.setAttribute("style", "fill:none;stroke:#fff;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round");
+    badge.append(disc, glyph);
+    g.appendChild(badge);
+  });
+}
+function setFlowDots(on) {
+  flowDots = on;
+  store.set("graphrag.dots", on ? "1" : "0");
+  document.querySelectorAll("[data-mmd], #viewer-body").forEach(addFlowDots);
+  document.querySelectorAll(".flowdots-toggle").forEach(b => b.setAttribute("aria-pressed", String(on)));
+  window.graph3d?.refreshAll();
+}
+document.addEventListener("click", e => { if (e.target.closest(".flowdots-toggle")) setFlowDots(!flowDots); });
+// buttons rendered later (cards, Develop) start in the right state
+new MutationObserver(() => document.querySelectorAll('.flowdots-toggle[aria-pressed="false"]').forEach(b => { if (flowDots) b.setAttribute("aria-pressed", "true"); }))
+  .observe(document.body, { childList: true, subtree: true });
 async function redrawDiagrams() {
   for (const el of document.querySelectorAll("[data-mmd]")) {
     try { await drawMermaid(el, el.dataset.mmd); } catch { /* keep the old drawing */ }
@@ -979,6 +1360,8 @@ function applyTheme(choice, persist = true) {
   updateThemeButton();
   mermaid.initialize({ ...MERMAID_BASE, theme: isDark() ? "dark" : "default" });
   graphs.forEach(g => g.style(graphStyle()));  // graph colours are read from CSS variables
+  window.graph3d?.refreshAll();
+  window.redrawScenes?.();
   redrawDiagrams();
 }
 function updateThemeButton() {
@@ -1031,7 +1414,7 @@ const post = (path, data, method = "POST") =>
 /* ================================================================ graph panel */
 /* Every node is a circle; colour and size tell the types apart. */
 const TYPES = {
-  SolutionPack: ["--pack", 46], PlaybookCollection: ["--coll", 52], Playbook: ["--pb", 36], Step: ["--step", 16], ConnectorOperation: ["--op", 20],
+  SolutionPack: ["--pack", 46], PlaybookCollection: ["--coll", 52], Playbook: ["--pb", 36], Step: ["--step", 20], ConnectorOperation: ["--op", 20],
   Connector: ["--con", 26], Module: ["--mod", 26], Document: ["--doc", 22],
 };
 const LABELS = { ConnectorOperation: "Connector op", PlaybookCollection: "Collection", SolutionPack: "Solution pack" };
@@ -1040,6 +1423,7 @@ const hiddenTypes = new Set((() => { try { return JSON.parse(store.get("graphrag
 const graphs = [];  // every cytoscape instance (home overview + chat graph) shares the type filter
 function applyFilter() {
   for (const g of graphs) g.batch(() => g.nodes().forEach(n => n.toggleClass("hidden", hiddenTypes.has(n.data("type")))));
+  window.graph3d?.refreshAll();
 }
 function renderLegend() {
   document.querySelectorAll("[data-legend]").forEach(el => renderLegendInto(el));
@@ -1065,6 +1449,171 @@ function renderLegendInto(el) {
 }
 renderLegend();
 
+/* ---- Node look: one icon per node type / step kind (24×24 line icons), shared by the 2D graphs, the diagram badges
+   and the 3D shapes' palette. */
+const NODE_ICONS = {
+  playbook: "M6 6m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M18 6m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M12 18m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M8.5 6h7M7.3 8.2l3.4 7.4M16.7 8.2l-3.4 7.4",
+  step: "M8 5.5l11 6.5-11 6.5z",
+  trigger: "M13 2L4.5 13.5H11L10 22l9-12h-6.5z",
+  decision: "M12 3l9 9-9 9-9-9z",
+  approval: "M5 12.5l4.5 4.5L19 7.5",
+  connector: "M9 2.5v5M15 2.5v5M6 7.5h12v3.5a6 6 0 0 1-12 0zM12 17v4.5",
+  operation: "M3 12h4.5l2.5-6 4 12 2.5-6H21",
+  reference: "M4 12h13M12 6l6 6-6 6",
+  module: "M12 3c4.4 0 8 1.3 8 3s-3.6 3-8 3-8-1.3-8-3 3.6-3 8-3zM4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3",
+  doc: "M6 2.5h8.5L19 7v14.5H6zM14 2.5V7h5M9 12h7M9 16h7",
+  collection: "M3 6.5h6.5l2 2.5H21v10.5H3z",
+  pack: "M12 2.5l8.5 4.75v9.5L12 21.5l-8.5-4.75v-9.5zM3.5 7.25L12 12l8.5-4.75M12 12v9.5",
+};
+const STEP_ICON = { trigger: "trigger", decision: "decision", manual_input: "approval", connector: "connector", reference: "reference" };
+const TYPE_ICON = { Playbook: "playbook", ConnectorOperation: "operation", Connector: "connector", Module: "module", Document: "doc", SolutionPack: "pack" };
+const iconOf = n => n.data("type") === "Step" ? STEP_ICON[n.data("props")?.kind] || "step" : TYPE_ICON[n.data("type")];
+const iconUri = (name, color = "#ffffff") => `data:image/svg+xml;utf8,${encodeURIComponent(
+  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="${NODE_ICONS[name]}"/></svg>`)}`;
+/* a + (b - a) * t for two CSS colours, as #rrggbb (via a canvas, which normalises any colour) */
+const mixMemo = new Map();
+function mixColor(a, b, t) {
+  const key = `${a}|${b}|${t}`;
+  if (mixMemo.has(key)) return mixMemo.get(key);
+  const c = document.createElement("canvas").getContext("2d");
+  const hex = col => { c.fillStyle = "#000"; c.fillStyle = col; const v = c.fillStyle; return /^#[0-9a-f]{6}$/i.test(v) ? parseInt(v.slice(1), 16) : null; };
+  const x = hex(a), y = hex(b);
+  const out = x === null || y === null ? a : `#${[16, 8, 0].map(s => Math.round(((x >> s) & 255) + (((y >> s) & 255) - ((x >> s) & 255)) * t)
+    .toString(16).padStart(2, "0")).join("")}`;
+  mixMemo.set(key, out);
+  return out;
+}
+const typeColor = n => css((TYPES[n.data("type")] || ["--step"])[0]);
+
+/* ---- Symbol index: what every icon, colour, 3D shape and line means (Home side panel, Quick guide, Full reference) */
+const SYMBOLS = [
+  ["Playbook", "--pb", "playbook", "sphere", "A workflow: a trigger plus steps"],
+  ["Trigger step", "--pb", "trigger", "cone", "What starts the playbook"],
+  ["Decision step", "--mod", "decision", "diamond", "Branches on a condition"],
+  ["Approval step", "--doc", "approval", "dodecahedron", "Waits for a person (manual input)"],
+  ["Connector step", "--con", "connector", "cube", "Calls a connector action"],
+  ["Child-playbook step", "--coll", "reference", "ringed sphere", "Runs another playbook"],
+  ["Other step", "--step", "step", "sphere", "Set variable, update or create a record…"],
+  ["Connector operation", "--op", "operation", "capsule", "One action a connector offers"],
+  ["Connector", "--con", "connector", "cube", "An integration, e.g. VirusTotal"],
+  ["Module", "--mod", "module", "cylinder", "A record type: alerts, incidents…"],
+  ["Document", "--doc", "doc", "sheet", "A runbook or vendor document"],
+  ["Collection", "--coll", "collection", "torus", "A folder of playbooks"],
+  ["Solution pack", "--pack", "pack", "gem", "A Content Hub bundle"],
+];
+const SYMBOL_LINES = [
+  ["line-arrow", "Arrow", "flows from source to destination"], ["line-dash", "Dashed", "the next step (NEXT)"],
+  ["line-calls", "Thick purple", "calls a child playbook"], ["line-dot", "Dotted amber", "acts on a module's records"],
+  ["line-flow", "Moving dots", "● Flow: the direction of travel"], ["st-current", "Orange", "the current step"],
+  ["st-done", "Purple outline", "steps already walked"], ["st-complete", "Green", "a finished scenario's whole path"],
+  ["st-other", "Grey, dashed", "other scenarios' steps and links"],
+];
+// a small drawing of each 3D shape, in the type's colour
+const SHAPE_SVG = {
+  sphere: `<circle cx="13" cy="13" r="9"/><circle cx="10" cy="10" r="3" fill="#fff" opacity=".35"/>`,
+  cone: `<path d="M13 3L22 21H4z"/><ellipse cx="13" cy="21" rx="9" ry="2.6" opacity=".7"/>`,
+  diamond: `<path d="M13 2l10 11-10 11L3 13z"/><path d="M3 13h20" stroke="#fff" stroke-opacity=".35" fill="none"/>`,
+  dodecahedron: `<path d="M13 3l10 7-4 12H7L3 10z"/><path d="M13 8l5 4-2 6h-6l-2-6z" fill="#fff" opacity=".25"/>`,
+  cube: `<path d="M13 3l9 5-9 5-9-5z" opacity=".95"/><path d="M4 8l9 5v10l-9-5z" opacity=".75"/><path d="M22 8l-9 5v10l9-5z" opacity=".55"/>`,
+  "ringed sphere": `<circle cx="13" cy="13" r="7"/><ellipse cx="13" cy="13" rx="12" ry="3.6" fill="none" stroke="currentColor" stroke-width="1.8"/>`,
+  capsule: `<rect x="8" y="3" width="10" height="20" rx="5"/>`,
+  cylinder: `<path d="M5 7v12c0 1.7 3.6 3 8 3s8-1.3 8-3V7"/><ellipse cx="13" cy="7" rx="8" ry="3" opacity=".7"/>`,
+  sheet: `<path d="M7 3l12 2v18L7 21z"/><path d="M9.5 9l7 1M9.5 13l7 1" stroke="#fff" stroke-opacity=".5"/>`,
+  torus: `<ellipse cx="13" cy="13" rx="9.5" ry="6.5" fill="none" stroke="currentColor" stroke-width="4"/>`,
+  gem: `<path d="M13 2l9 6v10l-9 6-9-6V8z"/><path d="M4 8l9 5 9-5M13 13v11" stroke="#fff" stroke-opacity=".35" fill="none"/>`,
+};
+const shapeGlyph = (shape, color) => `<svg class="sym-shape" viewBox="0 0 26 26" style="color: var(${color})" fill="currentColor" aria-hidden="true">${SHAPE_SVG[shape] || SHAPE_SVG.sphere}</svg>`;
+function symbolIndex(mode = "2d") {
+  const is3d = mode === "3d";
+  const lines = SYMBOL_LINES.map(([cls, name, desc]) => is3d && cls === "line-flow" ? [cls, "Particles", "● Flow: the direction of travel"]
+    : is3d && cls === "line-dash" ? [cls, "Thin line", "a link between two nodes"] : [cls, name, desc])
+    .filter(([cls]) => !(is3d && (cls === "line-dot" || cls === "line-calls")));
+  return `<div class="symidx">${SYMBOLS.map(([name, color, icon, shape, desc]) => `
+    <div class="sym-row">${is3d ? shapeGlyph(shape, color) : `<span class="sym-ico" style="--c: var(${color})"><img src="${iconUri(icon)}" alt=""></span>`}
+      <span class="sym-text"><b>${esc(name)}</b><span class="sym-desc">${esc(desc)}</span></span>
+      <span class="sym-3d">${is3d ? esc(shape) : `3D: ${esc(shape)}`}</span></div>`).join("")}</div>
+    <div class="sym-lines">${lines.map(([cls, name, desc]) => `<div class="sym-line"><i class="${cls}"></i><b>${esc(name)}</b> ${esc(desc)}</div>`).join("")}</div>
+    <p class="sym-note">${is3d ? "3D: drag to rotate, wheel to zoom, right-drag to pan; drag a node to move it; 🔒 Lock freezes the view. The halo around a node carries its highlight."
+      : "On the Home and chat graphs every step is grey with its kind's icon; diagrams colour steps by kind."} Right-click a playbook to open its scenarios.</p>`;
+}
+
+/* ◎ Index popover next to the 3D buttons: shows the 2D or the 3D index, following the view it was opened from */
+let indexPop = null;  // { anchor, mode }
+document.body.appendChild($("index-pop"));  // usable from every page, not just Home
+function renderIndexPop() {
+  const pop = $("index-pop"), mode = indexPop.mode();
+  pop.innerHTML = `<div class="help-head"><b>Index · ${mode === "3d" ? "3D view" : "2D view"}</b><button type="button" class="help-close" aria-label="Close">✕</button></div>${symbolIndex(mode)}`;
+  pop.querySelector(".help-close").onclick = closeIndexPop;
+}
+function openIndexPop(anchor, mode) {
+  if (indexPop?.anchor === anchor) return closeIndexPop();
+  closeIndexPop();
+  indexPop = { anchor, mode };
+  anchor.setAttribute("aria-expanded", "true");
+  const pop = $("index-pop");
+  pop.hidden = false;
+  renderIndexPop();
+  const r = anchor.getBoundingClientRect();
+  pop.style.top = `${Math.min(r.bottom + 6, innerHeight - pop.offsetHeight - 8)}px`;
+  pop.style.left = `${Math.max(8, Math.min(r.right - pop.offsetWidth, innerWidth - pop.offsetWidth - 8))}px`;
+}
+function closeIndexPop() {
+  if (!indexPop) return;
+  indexPop.anchor.setAttribute("aria-expanded", "false");
+  indexPop = null;
+  $("index-pop").hidden = true;
+}
+// the 2D / 3D view changed somewhere: an open index and the Home side panel follow it
+window.refreshIndexPop = () => {
+  if (indexPop) renderIndexPop();
+  $("home-symbols-body").innerHTML = symbolIndex(window.graph3d?.active(cyHome) ? "3d" : "2d");
+};
+// clicks elsewhere close it, except the 3D toggles: switching the view keeps it open and swaps it to the other index
+document.addEventListener("click", e => {
+  if (indexPop && !e.target.closest("#index-pop, #btn-home-3d, #btn-graph-3d, .dg-3d") && e.target !== indexPop.anchor) closeIndexPop();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeIndexPop(); });
+
+/* Right-click a playbook node (2D or 3D, Home or chat graph): open the Scenarios page with it selected and highlighted */
+function openScenariosFor(node) {
+  if (node.data("type") !== "Playbook") return;
+  const uuid = node.data("props")?.uuid;
+  if (!uuid) { notify("This playbook has no ID to open scenarios for.", true); return; }
+  window.scenarioFlash = uuid;
+  notify(`Opening the scenarios of “${node.data("label")}”…`);
+  location.hash = `#scenarios/${encodeURIComponent(uuid)}`;
+}
+
+/* ---- App info (version, owner) for the Home help panel and the Guide */
+let appInfoP = null;
+const appInfo = () => appInfoP || (appInfoP = api("/app/info").catch(err => { appInfoP = null; throw err; }));
+function contactLink(v) {
+  if (!v) return "";
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return `<a href="mailto:${esc(v)}">${esc(v)}</a>`;
+  if (/^https?:\/\//i.test(v)) return `<a href="${esc(v)}" target="_blank" rel="noopener">${esc(v)}</a>`;
+  return esc(v);
+}
+function aboutHTML(info) {
+  const o = info.owner || {};
+  const rows = [
+    ["Application", `${esc(info.name)} <b>v${esc(info.version)}</b>`],
+    ["Build", info.commit ? `${esc(info.commit)}${info.commit_date ? ` · ${esc(info.commit_date)}` : ""}` : ""],
+    ["Mode", esc(info.mode || "")],
+    ["Owner", esc(o.name || "")],
+    ["Contact", contactLink(o.contact) || `<span class="muted">not set (Settings → General → Owner contact)</span>`],
+    ["Profile", o.url ? contactLink(o.url) : ""],
+    ["Source", info.repo ? contactLink(info.repo) : ""],
+  ].filter(([, v]) => v);
+  return `<table class="about-table">${rows.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("")}</table>`;
+}
+function settingsRefHTML(ref) {
+  const groups = [...new Set(ref.map(r => r.group))];
+  return groups.map(g => `<h3>${esc(g)}</h3><table class="settings-ref"><tr><th>Setting</th><th>What it does</th><th>Values</th><th>Default</th></tr>
+    ${ref.filter(r => r.group === g).map(r => `<tr><td><b>${esc(r.label)}</b>${r.danger ? " ⚠" : ""}<br><code>${esc(r.key)}</code></td><td>${esc(r.help || "")}</td>
+      <td>${r.options?.length ? r.options.map(o => `<code>${esc(o)}</code>`).join(" ") : r.type === "bool" ? "on / off" : r.type === "secret" ? "secret (write-only)" : esc(r.type)}</td>
+      <td>${r.default ? `<code>${esc(r.default)}</code>` : "—"}</td></tr>`).join("")}</table>`).join("");
+}
+
 const graphStyle = () => [
     { selector: "node", style: {
       "background-color": n => css((TYPES[n.data("type")] || ["--step"])[0]),
@@ -1074,7 +1623,15 @@ const graphStyle = () => [
       width: n => (TYPES[n.data("type")] || [, 22])[1], height: n => (TYPES[n.data("type")] || [, 22])[1],
       "transition-property": "background-color, border-width, border-color, width, height, opacity",
       "transition-duration": reducedMotion ? 0 : 250,
+      // polished look: a lit two-tone fill, a lighter ring, and the type's icon in white
+      "background-fill": "radial-gradient",
+      "background-gradient-stop-colors": n => `${mixColor(typeColor(n), "#ffffff", 0.35)} ${typeColor(n)} ${mixColor(typeColor(n), "#000000", 0.25)}`,
+      "background-gradient-stop-positions": "0 55 100",
+      "border-width": 1.5, "border-color": n => mixColor(typeColor(n), "#ffffff", 0.5), "border-opacity": 0.9,
+      "background-image": n => { const i = iconOf(n); return i ? iconUri(i) : "none"; },
+      "background-width": "56%", "background-height": "56%", "background-image-opacity": 0.95, "background-image-containment": "over",
     }},
+    { selector: "node[type='PlaybookCollection']", style: { "background-image": "none" } },  // its name sits inside the node
     { selector: "node[type='Playbook']", style: { "font-size": 12, "font-weight": 600 } },
     { selector: "node[type='SolutionPack']", style: { "font-size": 12, "font-weight": 600 } },
     { selector: "edge[type='ACTS_ON']", style: { label: "data(detail)", "line-style": "dotted", "line-color": css("--mod"), "target-arrow-color": css("--mod") } },
@@ -1098,8 +1655,8 @@ const graphStyle = () => [
     { selector: "edge[type='NEXT']", style: { "line-style": "dashed" } },
     { selector: ".dim", style: { opacity: 0.18 } },
     { selector: "node.hidden", style: { display: "none" } },
-    { selector: "node.visited", style: { "background-color": css("--accent"), opacity: 1 } },
-    { selector: "node.active", style: { "background-color": css("--active"), "border-width": 4, "border-color": css("--active"),
+    { selector: "node.visited", style: { "background-fill": "solid", "background-color": css("--accent"), opacity: 1 } },
+    { selector: "node.active", style: { "background-fill": "solid", "background-color": css("--active"), "border-width": 4, "border-color": css("--active"),
                                         width: 32, height: 32, "font-size": 13, "font-weight": 700, "z-index": 10, opacity: 1 } },
     { selector: "edge.active", style: { "line-color": css("--active"), "target-arrow-color": css("--active"), width: 4, opacity: 1 } },
     { selector: "edge.visited", style: { "line-color": css("--accent"), "target-arrow-color": css("--accent"), width: 2.5, opacity: 1 } },
@@ -1115,12 +1672,145 @@ const graphStyle = () => [
                                            "font-size": 15, "z-index": 30 } },
     { selector: "edge.nb", style: { width: 2.5, opacity: 1, label: "data(type)", "font-size": 10, color: css("--text"),
                                     "text-opacity": 1, "z-index": 19 } },
+    /* hover a node: dim the rest, name the node and its direct neighbours (readable at any zoom), blink the
+       neighbours, make the links between them glow */
+    { selector: ".hov-dim", style: { opacity: 0.12, "text-opacity": 0 } },
+    { selector: "node.hov-nb, node.hov-center", style: { opacity: 1, "text-opacity": 1, label: "data(label)", "min-zoomed-font-size": 0,
+        "font-size": n => Math.max(11, 13 / n.cy().zoom()), color: css("--text"), "text-outline-width": 0, "text-wrap": "none",
+        "text-background-color": css("--panel"), "text-background-opacity": 0.92, "text-background-padding": 3,
+        "text-background-shape": "roundrectangle", "z-index": 40 } },
+    { selector: "node.hov-center", style: { "border-width": 4, "border-color": css("--active"), color: css("--active"), "font-weight": 700, "z-index": 41 } },
+    { selector: "node.hov-nb", style: { "underlay-color": css("--active"), "underlay-padding": 3, "underlay-opacity": 0.12, "underlay-shape": "ellipse",
+        "transition-property": "underlay-opacity, underlay-padding, background-color, border-width, border-color, width, height, opacity",
+        "transition-duration": reducedMotion ? 0 : 360 } },
+    { selector: "node.hov-nb.hov-pulse", style: { "underlay-opacity": 0.6, "underlay-padding": 10 } },
+    { selector: "edge.hov-edge", style: { opacity: 1, width: 4, "line-color": css("--active"), "target-arrow-color": css("--active"),
+        "underlay-color": css("--active"), "underlay-padding": 5, "underlay-opacity": 0.3, "z-index": 39 } },
 ];
+
+/* Hover a node on a 2D graph (Home, chat graph panel): its direct neighbours blink, the links between them glow and
+   only those nodes show their names; everything else dims. Moving off the node restores the graph. */
+/* A small metric card for a hovered node (2D and 3D graphs, diagram steps). rows: [[label, value], …] */
+function metricTip(title, sub, rows) {
+  return `<div class="mtip"><b>${esc(title)}</b>${sub ? `<div class="mtip-sub">${esc(sub)}</div>` : ""}
+    <table>${rows.filter(([, v]) => v !== undefined && v !== null && v !== "").map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(String(v))}</td></tr>`).join("")}</table></div>`;
+}
+/* Metrics for a node of the Home / chat graph: what it is, how connected, to what, and its key properties. */
+function nodeMetrics(n) {
+  const d = n.data(), p = d.props || {};
+  const byType = {};
+  n.neighborhood("node").forEach(x => { const t = LABELS[x.data("type")] || x.data("type"); byType[t] = (byType[t] || 0) + 1; });
+  const linked = Object.entries(byType).sort((a, b) => b[1] - a[1]).map(([t, c]) => `${c} ${t}`).join(" · ");
+  const op = d.type === "Step" ? n.outgoers("edge[type='USES']").targets().data("label") : "";
+  return metricTip(d.label, LABELS[d.type] || d.type, [
+    ["Links", `${n.incomers("edge").length} in · ${n.outgoers("edge").length} out`],
+    ["Linked to", linked || "nothing"],
+    ["Step kind", d.type === "Step" ? String(p.kind || "").replace(/_/g, " ") : ""],
+    ["Operation", op], ["Trigger", String(p.trigger_type || "").replace(/_/g, " ")], ["Collection", p.collection],
+    ["Playbooks", p.playbooks], ["Version", p.version], ["Step #", d.type === "Step" && p.order !== undefined ? +p.order + 1 : ""],
+    ["Secret", p.has_secret ? "⚠ hard-coded credential" : ""],
+  ]);
+}
+function hoverHighlight(g) {
+  let current = null, timer = null;
+  const tip = document.createElement("div");  // the metric card, next to the hovered node
+  tip.className = "mtip-float";
+  tip.hidden = true;
+  g.container().parentElement.appendChild(tip);
+  const clear = () => {
+    clearInterval(timer);
+    timer = null;
+    tip.hidden = true;
+    if (!current) return;
+    current = null;
+    g.batch(() => g.elements().removeClass("hov-dim hov-nb hov-center hov-edge hov-pulse"));
+  };
+  g.on("mouseover", "node", e => {
+    const n = e.target;
+    if (!n.visible()) return;
+    clear();
+    current = n;
+    const edges = n.connectedEdges().filter(x => x.visible());
+    const nbs = edges.connectedNodes().not(n).filter(x => x.visible());
+    g.batch(() => {
+      g.elements().difference(edges).difference(nbs).not(n).addClass("hov-dim");
+      nbs.addClass("hov-nb");
+      n.addClass("hov-center");
+      edges.addClass("hov-edge");
+    });
+    if (reducedMotion) nbs.addClass("hov-pulse");
+    else timer = setInterval(() => nbs.toggleClass("hov-pulse"), 420);
+    tip.innerHTML = nodeMetrics(n);
+    const p = n.renderedPosition(), box = g.container().parentElement;
+    tip.hidden = false;
+    const left = Math.min(p.x + 18, box.clientWidth - tip.offsetWidth - 6), top = Math.max(6, p.y - tip.offsetHeight - 14);
+    tip.style.left = `${Math.max(6, left)}px`;
+    tip.style.top = `${top}px`;
+  });
+  g.on("mouseout", "node", clear);
+  g.on("viewport", () => { tip.hidden = true; });
+  g.on("remove", () => { if (current?.removed()) clear(); });
+  g.on("zoom", () => { if (current) current.closedNeighborhood("node").updateStyle(); });  // labels keep a readable size
+}
 const makeGraph = container => {
   const g = cytoscape({ container, wheelSensitivity: 0.3, maxZoom: 1.8, minZoom: 0.08, style: graphStyle() });
   graphs.push(g);
+  flowOverlay(g);
   return g;
 };
+
+/* ● Flow on the Home and chat graphs: dots drawn on a transparent canvas over the graph (so the links stay drawn),
+   each travelling its link from source to target along the link's curve. Faded / dimmed links carry none, so
+   during ▶ Play only the walked path flows (the link being walked in orange). */
+const FLOW_PX_PER_S = 70, FLOW_MAX_EDGES = 4000;
+function flowOverlay(g) {
+  const box = g.container();
+  const cv = document.createElement("canvas");
+  cv.className = "flow-overlay";
+  box.appendChild(cv);
+  const phase = new Map();  // a random start per link, so the dots don't march in lockstep
+  const frame = now => {
+    requestAnimationFrame(frame);
+    const on = flowDots && !reducedMotion && !document.hidden && box.offsetParent !== null && g.edges().length;
+    if (!on) { if (cv.width) cv.width = cv.height = 0; return; }
+    const w = box.clientWidth, h = box.clientHeight, dpr = devicePixelRatio || 1;
+    if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) {
+      cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr);
+      cv.style.width = `${w}px`; cv.style.height = `${h}px`;
+    }
+    const ctx = cv.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const r = Math.max(1.6, Math.min(4.5, 3.4 * Math.sqrt(g.zoom())));
+    const active = css("--active"), s = now / 1000;
+    let drawn = 0;
+    for (const e of g.edges()) {
+      if (drawn >= FLOW_MAX_EDGES) break;
+      if (e.isLoop() || e.hasClass("dim") || e.hasClass("faded") || e.hasClass("hov-dim") || !e.visible()) continue;
+      const a = e.source().renderedPosition(), b = e.target().renderedPosition();
+      if (Math.max(a.x, b.x) < 0 || Math.min(a.x, b.x) > w || Math.max(a.y, b.y) < 0 || Math.min(a.y, b.y) > h) continue;
+      const len = Math.hypot(b.x - a.x, b.y - a.y);
+      if (len < 10) continue;
+      const m = e.renderedMidpoint();  // quadratic through the midpoint follows bezier links; straight ones stay straight
+      const cx = 2 * m.x - (a.x + b.x) / 2, cy2 = 2 * m.y - (a.y + b.y) / 2;
+      let ph = phase.get(e.id());
+      if (ph === undefined) phase.set(e.id(), ph = Math.random());
+      const walked = e.hasClass("active");
+      ctx.fillStyle = walked ? active : e.pstyle("line-color").strValue;
+      ctx.globalAlpha = Math.min(1, +e.pstyle("opacity").value + 0.15);
+      const count = len > 220 ? 2 : 1;
+      for (let k = 0; k < count; k++) {
+        const t = (s * FLOW_PX_PER_S / len + ph + k / count) % 1, u = 1 - t;
+        ctx.beginPath();
+        ctx.arc(u * u * a.x + 2 * u * t * cx + t * t * b.x, u * u * a.y + 2 * u * t * cy2 + t * t * b.y, walked ? r * 1.4 : r, 0, 2 * Math.PI);
+        ctx.fill();
+      }
+      drawn++;
+    }
+    ctx.globalAlpha = 1;
+  };
+  requestAnimationFrame(frame);
+}
 const cy = makeGraph($("cy"));
 let currentPlaybook = null;  // { uuid, name } targeted by ▶ Play
 
@@ -1178,10 +1868,13 @@ function showDetails(node) {
     .map(([k, v]) => `<tr><td>${esc(k)}</td><td>${esc(Array.isArray(v) ? v.join(", ") : typeof v === "object" ? JSON.stringify(v) : v)}</td></tr>`)
     .join("");
   $("details").className = "";
+  $("details").hidden = false;
   const isPb = d.type === "Playbook" && d.props?.uuid;
-  $("details").innerHTML = `<strong>${esc(d.label)}</strong> <span class="badge">${esc(LABELS[d.type] || d.type)}</span>
+  $("details").innerHTML = `<button type="button" class="details-close" title="Hide the details (they come back when you click a node)" aria-label="Hide details">✕</button><strong>${esc(d.label)}</strong> <span class="badge">${esc(LABELS[d.type] || d.type)}</span>
     ${isPb ? `<div class="actions"><button type="button" data-act="expand">Load steps &amp; docs</button>
-              <button type="button" data-act="play">▶ Play</button></div>` : ""}<table>${rows}</table>`;
+              <button type="button" data-act="play">▶ Play</button>
+              <a href="#scenarios/${encodeURIComponent(d.props.uuid)}"><button type="button" title="Every way this playbook can run, played step by step">⑂ Scenarios</button></a></div>` : ""}<table>${rows}</table>`;
+  if (isDocked()) closeDock();
   if (isPb) {
     setCurrentPlaybook(d.props.uuid, d.label);
     $("details").querySelector("[data-act=expand]").onclick = () => showPlaybook(d.props.uuid, d.label, { replace: false });
@@ -1418,6 +2111,7 @@ async function play() {
   }
   Object.assign(player, { playing: true, ordered, pb: cy.nodes().filter(n => n.data("props")?.uuid === uuid), paused: false });
   $("btn-play").textContent = "■ Stop";
+  closeDock();
   $("player").hidden = false;
   cy.resize();
   goTo(0);
@@ -1470,15 +2164,18 @@ $("btn-expand").onclick = () => setExpanded(!isExpanded());
 
 /* ---- Full-screen diagram viewer */
 let viewerReturnFocus = null;
-function openViewer(title, svg) {
+function openViewer(title, svg) {  // svg: a drawing to show (and zoom); null when the caller mounts a live card
   viewerReturnFocus = document.activeElement;
   $("viewer-title").textContent = title;
-  $("viewer-body").className = "body";
-  $("viewer-body").innerHTML = svg.outerHTML;
-  const source = svg.closest("[data-mmd]")?.dataset.mmd;
-  if (source) $("viewer-body").dataset.mmd = source; else delete $("viewer-body").dataset.mmd;
-  $("viewer-size").textContent = "Actual size";
+  $("viewer-zoom").hidden = !svg;
+  if (svg) {
+    $("viewer-body").className = svg.closest(".lin") ? "body lin" : "body";  // keep the Linear highlight
+    $("viewer-body").innerHTML = svg.outerHTML;
+    const source = svg.closest("[data-mmd]")?.dataset.mmd;
+    if (source) $("viewer-body").dataset.mmd = source; else delete $("viewer-body").dataset.mmd;
+  }
   $("diagram-viewer").hidden = false;
+  if (svg) viewerZoom.fit(2);
   $("viewer-close").focus();
 }
 function closeViewer() {
@@ -1487,10 +2184,71 @@ function closeViewer() {
   viewerReturnFocus?.focus?.();
 }
 $("viewer-close").onclick = closeViewer;
-$("viewer-size").onclick = () => {
-  const natural = $("viewer-body").classList.toggle("natural");
-  $("viewer-size").textContent = natural ? "Fit to window" : "Actual size";
-};
+/* ---- Zoom panel for a drawing: − / slider / + / Fit / 1:1, and Ctrl+wheel over the drawing.
+   Sizes the <svg> from its viewBox, so it stays sharp at any zoom; the scroller pans. */
+const ZOOM_MIN = 0.1, ZOOM_MAX = 4, READABLE_ZOOM = 0.5;
+function zoomControl(scroller, bar, { fitHeight = false, onReset = null } = {}) {
+  bar.innerHTML = `<button type="button" data-z="out" title="Zoom out">−</button>
+    <input type="range" min="${ZOOM_MIN}" max="${ZOOM_MAX}" step="0.05" value="1" aria-label="Zoom">
+    <button type="button" data-z="in" title="Zoom in">+</button>
+    <output title="Zoom level (Ctrl + mouse wheel over the drawing also zooms)">100%</output>
+    <button type="button" data-z="fit" title="Fit the drawing to the panel">Fit</button>
+    <button type="button" data-z="one" title="Actual size">1:1</button>
+    <button type="button" data-z="reset" title="Back to how the diagram first opened">⟲ Reset</button>`;
+  const range = bar.querySelector("input"), out = bar.querySelector("output");
+  let z = 1;
+  const svg = () => scroller.querySelector("svg");
+  const size = () => { const vb = svg()?.viewBox?.baseVal; return vb && vb.width ? vb : null; };
+  const clamp = v => Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v));
+  const apply = () => {
+    range.value = z;
+    out.textContent = `${Math.round(z * 100)}%`;
+    const s = svg(), n = size();
+    if (s && n) Object.assign(s.style, { width: `${n.width * z}px`, height: `${n.height * z}px`, maxWidth: "none", maxHeight: "none" });
+  };
+  const set = (nz, anchor) => {  // keep the point under the cursor (or the centre) where it is
+    nz = clamp(nz);
+    const r = scroller.getBoundingClientRect();
+    const ax = anchor ? anchor.x - r.left : scroller.clientWidth / 2, ay = anchor ? anchor.y - r.top : scroller.clientHeight / 2;
+    const k = nz / z, sx = scroller.scrollLeft + ax, sy = scroller.scrollTop + ay;
+    z = nz;
+    apply();
+    scroller.scrollLeft = sx * k - ax;
+    scroller.scrollTop = sy * k - ay;
+  };
+  // whole = fit the height too, even if small (the Linear / Scenarios "whole drawing" camera)
+  const fit = (maxZoom = 2, whole = false) => {
+    const n = size();
+    if (!n) return;
+    const cs = getComputedStyle(scroller);
+    const maxH = parseFloat(cs.maxHeight);  // a box that grows with its content can be up to max-height tall
+    const boxH = Number.isFinite(maxH) ? Math.max(scroller.clientHeight, maxH) : scroller.clientHeight;
+    const w = scroller.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const h = boxH - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    let nz = w / n.width;
+    // fit the whole drawing on screen, unless that makes a long one unreadable: then fit the width and scroll
+    if ((whole || fitHeight) && h > 0 && (whole || h / n.height >= READABLE_ZOOM)) nz = Math.min(nz, h / n.height);
+    if (whole) nz *= 0.97;  // room for the scrollbar-free whole view
+    z = clamp(Math.min(nz, maxZoom));
+    apply();
+  };
+  bar.addEventListener("click", e => {
+    const act = e.target.closest("[data-z]")?.dataset.z;
+    if (act === "out") set(z / 1.25); else if (act === "in") set(z * 1.25);
+    else if (act === "fit") fit(); else if (act === "one") set(1);
+    else if (act === "reset") { if (onReset) onReset(); else { fit(2); scroller.scrollTo(0, 0); } }
+  });
+  range.addEventListener("input", () => set(+range.value));
+  scroller.addEventListener("wheel", e => {
+    if (!e.ctrlKey && !e.metaKey) return;
+    e.preventDefault();
+    e.stopPropagation();  // a card inside the full-screen viewer zooms itself, not the viewer
+    set(z * Math.exp(-e.deltaY * 0.0015), { x: e.clientX, y: e.clientY });
+  }, { passive: false });
+  scroller.addEventListener("diagram-drawn", apply);  // theme redraws replace the <svg>
+  return { fit, set, apply, get z() { return z; } };
+}
+const viewerZoom = zoomControl($("viewer-body"), $("viewer-zoom"), { fitHeight: true });
 
 /* Esc closes the innermost thing first: diagram viewer, then playback, then expanded graph. */
 document.addEventListener("keydown", e => {
@@ -1499,7 +2257,59 @@ document.addEventListener("keydown", e => {
   else if (focusState.size) { e.stopImmediatePropagation(); for (const g of [...focusState.keys()]) clearFocus(g); }
   else if (!player.playing && isExpanded()) setExpanded(false);
 }, true);
-$("btn-fit").onclick = () => cy.fit(undefined, 30);
+$("btn-fit").onclick = () => window.graph3d?.active(cy) ? graph3d.reset(cy) : cy.fit(undefined, 30);
+$("btn-graph-reset").onclick = () => window.graph3d?.active(cy) ? graph3d.reset(cy) : resetGraph(cy, 30);
+
+/* ---- ⟲ Reset: put a graph back exactly as its layout left it. The positions are captured when a layout finishes
+   (or, failing that, just before the first node is dragged), and dropped whenever the graph's elements change. */
+const layoutSnap = new Map();  // graph -> Map(node id -> position)
+const snapLayout = g => layoutSnap.set(g, new Map(g.nodes().map(n => [n.id(), { ...n.position() }])));
+function trackLayout(g) {
+  g.on("layoutstop", () => snapLayout(g));
+  g.on("add remove", () => layoutSnap.delete(g));
+  g.on("grab", "node", () => { if (!layoutSnap.has(g) && !focusState.has(g)) snapLayout(g); });
+}
+function resetGraph(g, padding) {
+  clearFocus(g, false);  // a focus ring first puts its own nodes back
+  g.elements().unselect();
+  const snap = layoutSnap.get(g);
+  const anim = !reducedMotion && document.visibilityState === "visible";
+  g.nodes().forEach(n => {
+    const pos = snap?.get(n.id());
+    if (!pos) return;
+    n.stop(true, true);
+    if (anim) n.animate({ position: pos }, { duration: 450, queue: false }); else n.position(pos);
+  });
+  const fit = () => anim ? g.animate({ fit: { eles: g.elements(), padding } }, { duration: 350 }) : g.fit(undefined, padding);
+  if (anim && snap) setTimeout(fit, 460); else fit();
+}
+trackLayout(cy);
+hoverHighlight(cy);
+cyZoomControl(cy, $("graph-zoom"));
+
+/* Zoom panel for a cytoscape graph (Home, chat graph): − / slider / + / level / 1:1. Zooms around the centre of the
+   view; the mouse wheel still zooms around the pointer, and the panel follows it. Fit stays its own button. */
+function cyZoomControl(g, bar) {
+  const min = g.minZoom(), max = g.maxZoom();
+  bar.innerHTML = `<button type="button" data-z="out" title="Zoom out">−</button>
+    <input type="range" min="${min}" max="${max}" step="0.01" value="1" aria-label="Zoom">
+    <button type="button" data-z="in" title="Zoom in">+</button>
+    <output title="Zoom level (the mouse wheel over the graph also zooms)">100%</output>
+    <button type="button" data-z="one" title="Actual size (100%)">1:1</button>`;
+  const range = bar.querySelector("input"), out = bar.querySelector("output");
+  const show = () => { const z = g.zoom(); range.value = z; out.textContent = `${Math.round(z * 100)}%`; };
+  const set = level => {
+    const box = g.container();
+    g.zoom({ level: Math.min(max, Math.max(min, level)), renderedPosition: { x: box.clientWidth / 2, y: box.clientHeight / 2 } });
+  };
+  bar.addEventListener("click", e => {
+    const act = e.target.closest("[data-z]")?.dataset.z;
+    if (act === "out") set(g.zoom() / 1.25); else if (act === "in") set(g.zoom() * 1.25); else if (act === "one") set(1);
+  });
+  range.addEventListener("input", () => set(+range.value));
+  g.on("zoom", show);
+  show();
+}
 $("btn-clear").onclick = () => { stopPlay(); cy.elements().remove(); setCurrentPlaybook(null); $("graph-empty").style.display = "flex"; renderLegend(); };
 $("btn-overview").onclick = async () => {
   try { setCurrentPlaybook(null); await render(await api("/graph/overview")); $("graph-title").textContent = "All playbooks"; }
@@ -1508,57 +2318,25 @@ $("btn-overview").onclick = async () => {
 
 /* ================================================================ diagrams */
 let diagramSeq = 0;
-function diagramCard(playbooks, { autoload = true } = {}) {
-  const card = document.createElement("div");
-  card.className = "diagram";
-  const options = playbooks.map(p => `<option value="${esc(p.uuid)}">${esc(p.name)}</option>`).join("");
-  card.innerHTML = `
-    <div class="bar">
-      ${playbooks.length > 1 ? `<select aria-label="Playbook">${options}</select>` : `<strong style="font-size:13px">${esc(playbooks[0].name)}</strong>`}
-      <span class="seg" role="group" aria-label="Diagram type">
-        <button type="button" data-kind="flowchart" aria-pressed="${autoload}">Flowchart</button>
-        <button type="button" data-kind="sequence" aria-pressed="false">Sequence</button>
-      </span>
-      <span class="spacer"></span>
-      <button type="button" class="enlarge" title="Open this diagram full screen">⤢ Expand</button>
-      <button type="button" class="animate" title="Walk through this playbook step by step in the graph panel">▶ Animate</button>
-    </div>
-    <div class="canvas"><span class="muted">${autoload ? "Loading diagram…" : "Pick Flowchart or Sequence to show the workflow."}</span></div>`;
-  let kind = "flowchart";
-  const pick = () => card.querySelector("select")?.value || playbooks[0].uuid;
-  const draw = async () => {
-    const canvas = card.querySelector(".canvas");
-    canvas.innerHTML = `<span class="muted">Loading diagram…</span>`;
-    try {
-      const d = await api(`/playbooks/${encodeURIComponent(pick())}/diagram?kind=${kind}`);
-      canvas.dataset.kind = kind;
-      await drawMermaid(canvas, d.mermaid);
-    } catch (err) { canvas.innerHTML = `<span class="error">Diagram failed: ${esc(err.message)}</span>`; }
-  };
-  card.querySelectorAll(".seg button").forEach(b => b.onclick = () => {
-    kind = b.dataset.kind;
-    card.querySelectorAll(".seg button").forEach(x => x.setAttribute("aria-pressed", String(x === b)));
-    draw();
-  });
-  card.querySelector("select")?.addEventListener("change", draw);
-  card.querySelector(".enlarge").onclick = () => {
-    const svg = card.querySelector(".canvas svg");
-    if (!svg) return;
-    const uuid = pick();
-    const name = playbooks.find(p => p.uuid === uuid)?.name || "";
-    openViewer(`${name} · ${kind === "sequence" ? "Sequence" : "Flowchart"}`, svg);
-  };
-  card.querySelector(".animate").onclick = async () => {
-    const uuid = pick();
-    const name = playbooks.find(p => p.uuid === uuid)?.name;
-    stopPlay();
-    if (!stepsOf(uuid).length) await showPlaybook(uuid, name, { replace: false });
-    setCurrentPlaybook(uuid, name);
-    play();
-  };
-  if (autoload) draw();
-  return card;
+/* Graph-panel node details can be hidden; they come back with the next node click. */
+$("details").addEventListener("click", e => {
+  if (!e.target.closest(".details-close")) return;
+  $("details").hidden = true;
+  requestAnimationFrame(() => cy.resize());
+});
+/* Chat: an expanded diagram docks into the right-hand panel and the graph minimises to its toolbar. */
+const isDocked = () => $("graphpanel").classList.contains("docked");
+function closeDock() {
+  if (!isDocked()) return;
+  $("graphpanel").classList.remove("docked", "dock-min");
+  $("scn-dock").hidden = true;
+  $("scn-dock").replaceChildren();
+  document.querySelectorAll(".diagram.docked-away").forEach(c => c.classList.remove("docked-away"));
+  requestAnimationFrame(() => cy.resize());
 }
+$("btn-graph-restore").onclick = closeDock;
+
+/* diagramCard (Flowchart / Sequence / Linear / Scenarios, zoom, step player) and the Scenarios page: js/diagrams.js */
 
 /* ================================================================ chat thread */
 const STAGES = [["rewrite", "Understand"], ["search", "Search"], ["graph", "Graph"], ["answer", "Answer"]];
@@ -1870,7 +2648,8 @@ function showHomeDetails(node) {
     <div class="actions"><button class="primary" type="button" data-act="ask">Ask about this in chat →</button>
     <button type="button" data-act="focus">Focus links</button>
     ${d.type === "SolutionPack" ? `<button type="button" data-act="expand">Show its playbooks</button>` : ""}
-    ${catalogLink ? `<a class="pill" href="${catalogLink}">Open in Catalog →</a>` : ""}</div>`;
+    ${catalogLink ? `<a class="pill" href="${catalogLink}">Open in Catalog →</a>` : ""}
+    ${d.type === "Playbook" && props.uuid ? `<a class="pill" href="#scenarios/${encodeURIComponent(props.uuid)}">⑂ Scenarios →</a>` : ""}</div>`;
   $("home-details").querySelector("[data-act=ask]").onclick = () => startChatAbout(ask);
   $("home-details").querySelector("[data-act=focus]").onclick = () => focusNeighbors(cyHome, node);
   $("home-details").querySelector("[data-act=expand]")?.addEventListener("click", async () => {
@@ -1899,7 +2678,42 @@ async function setHomeMode(mode, focusIds = []) {
   }, reducedMotion ? 0 : 1700);
 }
 $("home-mode").querySelectorAll("button").forEach(b => b.onclick = () => setHomeMode(b.dataset.mode));
-$("btn-home-fit").onclick = () => { clearFocus(cyHome, false); cyHome.fit(undefined, 40); };
+$("btn-home-fit").onclick = () => { if (window.graph3d?.active(cyHome)) return graph3d.reset(cyHome); clearFocus(cyHome, false); cyHome.fit(undefined, 40); };
+$("home-symbols-body").innerHTML = symbolIndex();
+$("btn-home-index").onclick = e => { e.stopPropagation(); openIndexPop(e.currentTarget, () => window.graph3d?.active(cyHome) ? "3d" : "2d"); };
+$("btn-graph-index").onclick = e => { e.stopPropagation(); openIndexPop(e.currentTarget, () => window.graph3d?.active(cy) ? "3d" : "2d"); };
+for (const g of [cy, cyHome]) {
+  g.on("cxttap", "node[type='Playbook']", e => openScenariosFor(e.target));
+  g.container().addEventListener("contextmenu", e => e.preventDefault());  // right-click is for the graph here
+}
+/* ? Help on Home: version, build, owner contact and links to the guides */
+function closeHelp() { $("help-pop").hidden = true; $("btn-home-help").setAttribute("aria-expanded", "false"); }
+$("btn-home-help").onclick = async e => {
+  e.stopPropagation();
+  if (!$("help-pop").hidden) return closeHelp();
+  const pop = $("help-pop");
+  pop.hidden = false;
+  $("btn-home-help").setAttribute("aria-expanded", "true");
+  pop.innerHTML = `<div class="help-head"><b>Help</b><button type="button" class="help-close" aria-label="Close">✕</button></div><div class="muted">Loading…</div>`;
+  let body;
+  try { body = aboutHTML(await appInfo()); } catch (err) { body = `<div class="error">${esc(err.message)}</div>`; }
+  pop.innerHTML = `<div class="help-head"><b>Help</b><button type="button" class="help-close" aria-label="Close">✕</button></div>${body}
+    <div class="help-links"><a href="#guide">📘 Quick guide</a><a href="#guide/full">📚 Full reference</a><a href="#home" data-act="symbols">◎ Symbols</a></div>`;
+  pop.querySelector(".help-close").onclick = closeHelp;
+  pop.querySelector("[data-act=symbols]").onclick = ev => {
+    ev.preventDefault();
+    closeHelp();
+    $("home-symbols").open = true;
+    $("home-symbols").scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+  };
+  pop.querySelectorAll(".help-links a[href^='#guide']").forEach(a => a.addEventListener("click", closeHelp));
+};
+document.addEventListener("click", e => { if (!$("help-pop").hidden && !e.target.closest("#help-pop, #btn-home-help")) closeHelp(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("help-pop").hidden) closeHelp(); });
+$("btn-home-reset").onclick = () => window.graph3d?.active(cyHome) ? graph3d.reset(cyHome) : resetGraph(cyHome, 40);
+trackLayout(cyHome);
+hoverHighlight(cyHome);
+cyZoomControl(cyHome, $("home-zoom"));
 $("btn-start-chat").onclick = () => { location.hash = "#chat"; };
 
 function startChatAbout(question) {
@@ -2093,6 +2907,9 @@ function playbookDetail(p) {
       <button class="primary" data-act="ask">Ask about this in chat →</button>
       <button data-act="diagram" data-kind="flowchart">Flowchart</button>
       <button data-act="diagram" data-kind="sequence">Sequence</button>
+      <button data-act="diagram" data-kind="linear" title="Every step in order, one under the other, animated step by step">☰ Linear</button>
+      <button data-act="diagram" data-kind="scenarios" title="Every way the playbook can run end to end; pick one to play it">⑂ Scenarios</button>
+      <a href="#scenarios/${enc(p.uuid || p.name)}"><button type="button" title="Open this playbook on the Scenarios page">Scenarios page ↗</button></a>
       ${homeMode !== "ecosystem" ? `<button data-act="home">Show on Home</button>` : ""}
     </div>
     <div data-slot="diagram"></div>
@@ -2187,14 +3004,10 @@ function wireDetail(kind, id) {
       : `pb:${kind === "playbooks" ? (await api(`/playbooks/${enc(id)}`)).uuid : id}`;
     location.hash = "#home";
   });
-  panel.querySelectorAll("[data-act=diagram]").forEach(b => b.addEventListener("click", async () => {
-    const slot = panel.querySelector("[data-slot=diagram]");
-    slot.innerHTML = `<div class="muted">Loading diagram…</div>`;
-    try {
-      const d = await api(`/playbooks/${enc(id)}/diagram?kind=${b.dataset.kind}`);
-      slot.innerHTML = `<div class="canvas"></div>`;
-      await drawMermaid(slot.firstElementChild, d.mermaid);
-    } catch (err) { slot.innerHTML = `<div class="error">Diagram failed: ${esc(err.message)}</div>`; }
+  panel.querySelectorAll("[data-act=diagram]").forEach(b => b.addEventListener("click", () => {
+    // the same card as in chat answers: switch type, zoom, expand, and the animated Linear walk-through
+    const name = panel.querySelector("h2")?.textContent || id;
+    panel.querySelector("[data-slot=diagram]").replaceChildren(diagramCard([{ uuid: id, name }], { kind: b.dataset.kind, graphAnimate: false }));
   }));
 }
 
@@ -2217,19 +3030,37 @@ const rowsTable = (head, rows) => `<tr>${head.map(h => `<th>${h}</th>`).join("")
   (rows.length ? rows.map(r => `<tr>${r.map((c, i) => `<td class="${typeof c === "number" ? "num" : ""}">${typeof c === "number" ? num(c) : c}</td>`).join("")}</tr>`).join("")
                : `<tr><td colspan="${head.length}" class="muted">none</td></tr>`);
 
+let guideExtras = false;
 async function renderGuide() {
+  // two articles: the Quick guide (#guide) and the Full reference (#guide/full); the contents list follows the open one
+  const full = parseHash().kind === "full", art = full ? $("guide") : $("guide-quick");
+  $("guide").hidden = !full;
+  $("guide-quick").hidden = full;
+  document.querySelectorAll(".guide-tabs [data-guide]").forEach(a => a.setAttribute("aria-current", String((a.dataset.guide === "full") === full)));
   const toc = $("guide-toc");
-  if (toc.children.length === 1) {
-    document.querySelectorAll("#guide h2").forEach(h => {
-      const b = document.createElement("button"); b.type = "button"; b.textContent = h.textContent; b.dataset.target = h.id;
-      b.onclick = () => document.getElementById(h.id).scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
-      toc.appendChild(b);
-    });
+  toc.querySelector("h2").textContent = full ? "Full reference" : "Quick guide";
+  toc.querySelectorAll("button").forEach(b => b.remove());
+  art.querySelectorAll("h2").forEach(h => {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = h.textContent; b.dataset.target = h.id;
+    b.onclick = () => document.getElementById(h.id).scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth" });
+    toc.appendChild(b);
+  });
+  $("guide-body").scrollTop = 0;
+  if (!toc.dataset.wired) {
+    toc.dataset.wired = "1";
     $("guide-body").addEventListener("scroll", () => {
       let current = null;
-      document.querySelectorAll("#guide h2").forEach(h => { if (h.getBoundingClientRect().top < 140) current = h.id; });
+      ($("guide").hidden ? $("guide-quick") : $("guide")).querySelectorAll("h2").forEach(h => { if (h.getBoundingClientRect().top < 140) current = h.id; });
       toc.querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.target === current));
     });
+  }
+  $("gq-symbols").innerHTML = $("g-symbols").innerHTML = symbolIndex();
+  if (!guideExtras) {
+    guideExtras = true;
+    appInfo().then(info => { $("gq-about").innerHTML = $("g-about-info").innerHTML = aboutHTML(info); $("gq-about").classList.remove("muted"); $("g-about-info").classList.remove("muted"); })
+      .catch(err => { $("gq-about").textContent = $("g-about-info").textContent = `Couldn't load: ${err.message}`; guideExtras = false; });
+    api("/guide/settings").then(ref => { $("g-settings-ref").innerHTML = settingsRefHTML(ref); $("g-settings-ref").classList.remove("muted"); })
+      .catch(err => { $("g-settings-ref").textContent = `Couldn't load the settings list: ${err.message}`; guideExtras = false; });
   }
   if (guideRendered) return;
   let a;
@@ -2751,7 +3582,7 @@ async function bootChat() {
 }
 function parseHash() {
   const [view, kind, ...rest] = location.hash.replace(/^#/, "").split("/");
-  const views = ["home", "browse", "chat", "guide", "settings", "github", "review", "insights", "search", "develop", "docs"];
+  const views = ["home", "browse", "chat", "scenarios", "guide", "settings", "github", "review", "insights", "search", "develop", "docs"];
   return { view: views.includes(view) ? view : "home", kind: kind ? decodeURIComponent(kind) : kind, id: rest.length ? decodeURIComponent(rest.join("/")) : null };
 }
 async function route() {
@@ -2789,7 +3620,7 @@ async function showView(name) {
   } else if (name === "settings") {
     stopPlay();
     renderSettings().then(() => window.afterSettings?.()).catch(err => toast(err.message, true));
-  } else if (["review", "insights", "develop", "docs"].includes(name)) {
+  } else if (["review", "insights", "develop", "docs", "scenarios"].includes(name)) {
     stopPlay();
   } else {
     requestAnimationFrame(() => cy.resize());
@@ -2823,6 +3654,7 @@ $("btn-logout").onclick = async () => { await fetch("/auth/logout", { method: "P
     banner.innerHTML = `<span class="error">${esc(err.message)}</span>`;
     document.querySelector("header").after(banner);
   }
+  if (document.readyState === "loading") await new Promise(r => document.addEventListener("DOMContentLoaded", r, { once: true }));
   route();
 })();
 </script>
@@ -2831,5 +3663,8 @@ $("btn-logout").onclick = async () => { await fetch("/auth/logout", { method: "P
 <script src="/static/js/insights.js"></script>
 <script src="/static/js/develop.js"></script>
 <script src="/static/js/docs.js"></script>
+<script src="/static/js/diagrams.js"></script>
+<script src="/static/js/graph3d.js"></script>
+<script src="/static/js/scene.js"></script>
 </body>
 </html>

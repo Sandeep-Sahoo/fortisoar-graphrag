@@ -110,6 +110,8 @@ def test_develop_api_and_viewer_permissions(monkeypatch):
     r = client.post(f"/develop/sessions/{sid}/message", json={"skip": True}).json()
     assert r["session"]["stage"] == "design" and r["new"][-1]["type"] == "proposal"
     assert client.get(f"/develop/sessions/{sid}/view").status_code == 200          # draft customer view
+    d = client.get(f"/develop/sessions/{sid}/diagram?kind=scenarios&dir=LR").json()   # design scenarios
+    assert d["mermaid"].startswith("flowchart LR") and d["scenarios"] and d["scenarios"][0]["path"][0] == 0
     assert client.get(f"/develop/sessions/{sid}/playbook.json").status_code == 404  # nothing developed yet
     assert client.post(f"/develop/sessions/{sid}/develop").json()["new"][0]["review"]["score"] >= 85
     dl = client.get(f"/develop/sessions/{sid}/playbook.json")

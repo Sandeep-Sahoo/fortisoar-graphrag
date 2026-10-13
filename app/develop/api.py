@@ -106,6 +106,28 @@ def edit_design(sid: str, body: EditIn, request: Request):
     return {"session": _public(s), "new": new}
 
 
+@router.get("/develop/sessions/{sid}/diagram")
+def design_diagram(sid: str, kind: str = "flowchart", dir: str = "TB", children: bool = False):
+    """The current design as any of the playbook diagram kinds (incl. scenarios), drawn from its generated workflow."""
+    from .. import diagrams
+    from . import generate
+
+    if kind not in diagrams.KINDS:
+        raise HTTPException(400, f"kind must be one of {', '.join(diagrams.KINDS)}")
+    s = _session(sid)
+    if not s.get("spec"):
+        raise HTTPException(404, "this design has no proposed workflow yet")
+    doc = generate.export(s["spec"], s["pb_uuid"], s["coll_uuid"])
+    flow = generate.flow_of(doc["data"][0]["workflows"][0], get_services().scrubber)
+    if children:  # child playbooks the design calls, when they exist in the graph
+        try:
+            flow = diagrams.expand_children(flow, get_services().child_flow)
+        except Exception:  # noqa: BLE001 - no graph available: draw the design as it is
+            pass
+    return {"sid": sid, "name": flow.get("name") or s["spec"].get("name") or "Design", "kind": kind,
+            **diagrams.render(flow, kind, dir)}
+
+
 @router.get("/develop/sessions/{sid}/spec")
 def get_spec(sid: str):
     s = _session(sid)

@@ -147,6 +147,7 @@
         <div class="md">${md(m.summary)}</div>
         <div class="seg2" role="group" aria-label="Diagram">${["flowchart", "sequence", "glance"].map((k, i) =>
           `<button type="button" data-d="${k}" aria-pressed="${i === 0}">${{ flowchart: "Workflow", sequence: "Sequence", glance: "At a glance" }[k]}</button>`).join("")}</div>
+        <button type="button" class="flowdots-toggle" aria-pressed="false" title="Flow dots: a dot travels every link from its source to its destination, continuously">● Flow</button>
         <div class="dv-diagram" title="Click to enlarge"></div>
         ${m.problems?.length ? `<div class="notice">${m.problems.map(esc).join("<br>")}</div>` : ""}
         ${r.findings?.length ? `<details><summary class="muted">Draft review: ${r.findings.length} finding(s) to know about</summary>
@@ -158,6 +159,7 @@
           <button type="button" data-act="change">✏️ Request changes</button>
           <button type="button" data-act="edit">Edit in panel</button>
           <button type="button" data-act="preview" title="The customer document for this draft">👁 Customer preview</button></div>` : ""}
+        <div class="btnrow" style="margin-top:6px"><a href="#scenarios/develop/${enc(D.sid)}"><button type="button" title="Every way this design can run end to end, played step by step">⑂ Scenarios</button></a></div>
       </div>`;
       const box = el.querySelector(".dv-diagram");
       const draw = async kind => {
@@ -362,7 +364,8 @@
     const box = $("dv-panel");
     const p = [...D.session.messages].reverse().find(m => m.type === "proposal");
     if (!p) { box.innerHTML = `<div class="muted" style="padding:16px">No design yet.</div>`; return; }
-    box.innerHTML = `<p class="sub">Design v${p.version} · click a diagram to enlarge (and download it as SVG / PNG).</p>
+    box.innerHTML = `<p class="sub">Design v${p.version} · click a diagram to enlarge (and download it as SVG / PNG).
+      <a href="#scenarios/develop/${enc(D.sid)}">⑂ Scenarios: every way it can run →</a></p>
       ${["flowchart", "sequence", "glance"].map(k => `<h3>${{ flowchart: "Workflow", sequence: "Sequence", glance: "At a glance" }[k]}</h3><div class="dv-diagram" data-k="${k}"></div>`).join("")}`;
     box.querySelectorAll(".dv-diagram").forEach(async el => {
       try { await drawMermaid(el, p[el.dataset.k]); } catch (err) { el.innerHTML = `<div class="error">${esc(err.message)}</div>`; }

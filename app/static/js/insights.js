@@ -4,7 +4,7 @@
   const TABS = { impact: "Connector impact", duplicates: "Duplicates", gaps: "Coverage gaps", chains: "Call chains", security: "Security", changes: "Changes" };
   const root = $("view-insights");
   const S = { tab: "impact", param: null, cache: {} };
-  const pbLink = (uuid, name) => uuid ? `<a href="#browse/playbooks/${enc(uuid)}">${esc(name || uuid)}</a>` : esc(name || "");
+  const pbLink = (uuid, name) => uuid ? `<a href="#browse/playbooks/${enc(uuid)}">${esc(name || uuid)}</a> <a class="scn-link" href="#scenarios/${enc(uuid)}" title="Scenarios: every way it can run">⑂</a>` : esc(name || "");
 
   function frame() {
     if (root.dataset.ready) return;

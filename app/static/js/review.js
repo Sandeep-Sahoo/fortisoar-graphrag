@@ -326,7 +326,8 @@
           ${r.provisional ? `<div class="sub">Provisional: ${r.manual_pending} manual check(s) not answered.</div>` : ""}</div>
       </div>
       <div class="btnrow">
-        ${r.graph_uuid ? `<a href="#browse/playbooks/${enc(r.graph_uuid)}"><button type="button">Open in catalog</button></a>` : ""}
+        ${r.graph_uuid ? `<a href="#browse/playbooks/${enc(r.graph_uuid)}"><button type="button">Open in catalog</button></a>
+          <a href="#scenarios/${enc(r.graph_uuid)}"><button type="button" title="Every way this playbook can run, played step by step">⑂ Scenarios</button></a>` : ""}
         <button type="button" id="rd-md">⤓ Review (.md)</button>
         <button type="button" id="rd-csv">⤓ Findings (.csv)</button>
         <button type="button" id="rd-link">🔗 Copy link</button>

@@ -146,15 +146,22 @@ class Services:
             node["focus"] = node["props"].get("uuid") in uuids
         return graph
 
-    def playbook_diagram(self, name_or_uuid: str, kind: str = "flowchart") -> dict:
+    def child_flow(self, step: dict) -> dict | None:
+        """The flow of the playbook a reference step calls (by ID, or by name for designs), for expand_children."""
+        uuid = step.get("child_uuid") or (self.retriever.resolve_playbook(step["child"]) if step.get("child") else None)
+        flow = self.retriever.step_flow(uuid) if uuid else None
+        return {**flow, "uuid": uuid} if flow else None
+
+    def playbook_diagram(self, name_or_uuid: str, kind: str = "flowchart", direction: str = "TB", children: bool = False) -> dict:
         from . import diagrams
 
         uuid = self.retriever.resolve_playbook(name_or_uuid)
         flow = self.retriever.step_flow(uuid) if uuid else None
         if not flow:
             return {"error": f"no playbook matching '{name_or_uuid}'"}
-        render = diagrams.sequence if kind == "sequence" else diagrams.flowchart
-        return {"uuid": uuid, "name": flow["name"], "kind": kind, "mermaid": render(flow)}
+        if children:
+            flow = diagrams.expand_children({**flow, "uuid": uuid}, self.child_flow)
+        return {"uuid": uuid, "name": flow["name"], "kind": kind, "children": children, **diagrams.render(flow, kind, direction)}
 
     def list_collections(self) -> list[dict]:
         return self.graph.read(
