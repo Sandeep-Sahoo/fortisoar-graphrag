@@ -111,7 +111,10 @@ def _write_env(updates: dict[str, str | None], path: Path | None = None) -> None
         elif value not in (None, ""):
             lines.append(new_line)
     path.write_text("\n".join(lines) + "\n")
-    os.chmod(path, 0o600)  # it holds secrets
+    try:
+        os.chmod(path, 0o600)  # it holds secrets
+    except OSError:  # e.g. a .env bind-mounted into the app container from a Windows folder
+        pass
 
 
 def apply(updates: dict, env_file: Path | None = None) -> dict:

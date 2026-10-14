@@ -295,9 +295,33 @@ def app_info():
         except (OSError, subprocess.SubprocessError):
             return ""
 
-    remote = git("config", "--get", "remote.origin.url")
+    def head_from_files() -> str:  # no git binary (the app container): read .git directly
+        try:
+            head = (ROOT / ".git" / "HEAD").read_text().strip()
+            if not head.startswith("ref: "):
+                return head[:7]
+            ref = head[5:]
+            loose = ROOT / ".git" / ref
+            if loose.exists():
+                return loose.read_text().strip()[:7]
+            for line in (ROOT / ".git" / "packed-refs").read_text().splitlines():
+                if line.endswith(" " + ref):
+                    return line.split()[0][:7]
+        except OSError:
+            pass
+        return ""
+
+    def remote_from_files() -> str:
+        try:
+            text = (ROOT / ".git" / "config").read_text()
+            section = text.split('[remote "origin"]', 1)[1].split("[", 1)[0]
+            return next((ln.split("=", 1)[1].strip() for ln in section.splitlines() if ln.strip().startswith("url")), "")
+        except (OSError, IndexError):
+            return ""
+
+    remote = git("config", "--get", "remote.origin.url") or remote_from_files()
     owner = {k: os.environ.get(f"OWNER_{k.upper()}", DEFAULTS.get(f"OWNER_{k.upper()}", "")) for k in ("name", "contact", "url")}
-    return {"name": "FortiSOAR Graph RAG", "version": __version__, "commit": git("rev-parse", "--short", "HEAD"),
+    return {"name": "FortiSOAR Graph RAG", "version": __version__, "commit": git("rev-parse", "--short", "HEAD") or head_from_files(),
             "commit_date": git("log", "-1", "--format=%cs"), "repo": remote.removesuffix(".git") if remote.startswith("https://") else "",
             "owner": owner, "mode": get_services().settings.mode}
 

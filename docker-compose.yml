@@ -3,9 +3,13 @@
 #   full-local  -> neo4j + ollama + app   (nothing leaves the machine)
 #   cloud       -> app only               (NEO4J pointed at Aura / remote Neo4j via DOCKER_NEO4J_URI)
 services:
+  # Container names: fortisoar-graph-rag (the app), fortinet-database, marlink-database.
+  # Service names (neo4j, neo4j-marlink, app) stay: the app reaches the databases by them and `docker compose` uses them.
   neo4j:
     image: neo4j:5.26-community
+    container_name: fortinet-database
     profiles: ["local", "full-local"]
+    restart: unless-stopped
     ports: ["7474:7474", "7687:7687"]
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env}
@@ -19,7 +23,9 @@ services:
   # Second, fully separate knowledge base for the Marlink workspace (Neo4j Community has one database per server).
   neo4j-marlink:
     image: neo4j:5.26-community
+    container_name: marlink-database
     profiles: ["local", "full-local"]
+    restart: unless-stopped
     ports: ["7475:7474", "7688:7687"]
     environment:
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD_MARLINK:-${NEO4J_PASSWORD:?set NEO4J_PASSWORD in .env}}
@@ -36,20 +42,39 @@ services:
     ports: ["11434:11434"]
     volumes: [ollama_data:/root/.ollama]
 
+  # The web app. `docker compose up -d` starts it with the databases (http://localhost:8000);
+  # after code changes: `docker compose up -d --build app`.
   app:
     build: .
+    image: fortisoar-graphrag-app
+    container_name: fortisoar-graph-rag
     profiles: ["local", "full-local", "cloud"]
+    restart: unless-stopped
     env_file: .env
     environment:
-      # Inside the compose network the hostnames differ from the host-side .env values.
+      # Inside the compose network the hostnames differ from the host-side .env values
+      # (those stay as they are, so the app can still be run natively with .venv).
       NEO4J_URI: ${DOCKER_NEO4J_URI:-bolt://neo4j:7687}
+      NEO4J_URI_MARLINK: ${DOCKER_NEO4J_URI_MARLINK:-bolt://neo4j-marlink:7687}
       OLLAMA_URL: ${DOCKER_OLLAMA_URL:-http://ollama:11434}
     ports: ["8000:8000"]
-    volumes: ["./data:/app/data:ro"]
+    volumes:
+      - ./data:/app/data        # reviews, uploads, designs, users, audit log, caches, logs: read-write, same folder as before
+      - ./.env:/app/.env        # settings changed in the app are saved back to your .env
+      - ./.git:/app/.git:ro     # lets the Help panel show the running commit
     depends_on:
       neo4j:
         condition: service_healthy
         required: false
+      neo4j-marlink:
+        condition: service_healthy
+        required: false
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/login', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
 
 volumes:
   neo4j_data:

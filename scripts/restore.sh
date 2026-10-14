@@ -42,7 +42,7 @@ load() {  # $1 = compose service, $2 = volume, $3 = dump sub-folder
   echo "• Preparing $service (first start creates the database with the password from .env)…"
   docker compose up -d "$service" >/dev/null
   for _ in $(seq 1 30); do
-    [ "$(docker inspect -f '{{.State.Health.Status}}' "${PROJECT}-${service}-1" 2>/dev/null)" = healthy ] && break
+    [ "$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose ps -q "$service")" 2>/dev/null)" = healthy ] && break
     sleep 4
   done
   docker compose stop "$service" >/dev/null

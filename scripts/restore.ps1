@@ -56,7 +56,8 @@ function Load-Dump([string]$Service, [string]$Volume, [string]$DumpDir) {
   Write-Host "- Preparing $Service (first start creates the database with the password from .env)..."
   docker compose up -d $Service | Out-Null
   for ($i = 0; $i -lt 30; $i++) {
-    if ((docker inspect -f '{{.State.Health.Status}}' "$Project-$Service-1" 2>$null) -eq 'healthy') { break }
+    $id = docker compose ps -q $Service  # the container, whatever it is named (fortinet-database / marlink-database)
+    if ($id -and (docker inspect -f '{{.State.Health.Status}}' $id 2>$null) -eq 'healthy') { break }
     Start-Sleep 4
   }
   docker compose stop $Service | Out-Null

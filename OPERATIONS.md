@@ -4,16 +4,44 @@
 
 | Part | Where | Moves via |
 |---|---|---|
-| Code | this folder (`app/`, `scripts/`, `tests/`, `docker-compose.yml`, `requirements.txt`) | git (`github.com/Sandeep-Sahoo/fortisoar-graphrag`) |
-| Fortinet knowledge database | Docker volume `fortisoar-graphrag_neo4j_data` (service `neo4j`, ports 7474 / 7687) | backup → `neo4j-fortinet/neo4j.dump` |
-| Marlink knowledge database | Docker volume `fortisoar-graphrag_neo4j_marlink_data` (service `neo4j-marlink`, ports 7475 / 7688) | backup → `neo4j-marlink/neo4j.dump` |
+| Code | this folder (`app/`, `scripts/`, `tests/`, `docker-compose.yml`, `Dockerfile`, `requirements.txt`) | git (`github.com/Sandeep-Sahoo/fortisoar-graphrag`) |
+| The app | container `fortisoar-graph-rag` (service `app`, port 8000), image `fortisoar-graphrag-app` built from the code | rebuilt on the new machine (`docker compose up -d --build`) |
+| Fortinet knowledge database | container `fortinet-database` (service `neo4j`, ports 7474 / 7687), Docker volume `fortisoar-graphrag_neo4j_data` | backup → `neo4j-fortinet/neo4j.dump` |
+| Marlink knowledge database | container `marlink-database` (service `neo4j-marlink`, ports 7475 / 7688), Docker volume `fortisoar-graphrag_neo4j_marlink_data` | backup → `neo4j-marlink/neo4j.dump` |
 | App data | `data/` — reviews, rules, uploads, Develop designs, documents, users, audit log, usage meter, logs (`data/logs/app.log`), job logs, embedding + answer caches (`data/.cache/`), downloaded GitHub content, Marlink's files (`data/workspaces/marlink/`) | backup → `app-data.tar.gz` |
 | Settings and secrets | `.env` (API keys, Neo4j password, sign-in, `*_MARLINK` secrets) | backup → `env.secret` (copy privately) |
-| Python environment | `.venv/` | recreated on the new machine |
+| Python environment | `.venv/` (only for running natively and for the scripts) | recreated on the new machine |
+
+`docker compose` commands use the **service** names (`app`, `neo4j`, `neo4j-marlink`); `docker` commands and Docker
+Desktop show the **container** names (`fortisoar-graph-rag`, `fortinet-database`, `marlink-database`), e.g.
+`docker logs -f fortisoar-graph-rag`.
 
 ## 1. Restart the service
 
 Run these in the project folder (`fortisoar-graphrag/`).
+
+### Everything in Docker (recommended)
+
+The app runs as the `app` service (container `fortisoar-graph-rag`) next to the two databases (`fortinet-database`,
+`marlink-database`); `COMPOSE_PROFILES=local` in `.env` starts all three:
+
+```bash
+docker compose up -d                 # start (or restart) the databases and the app
+docker compose ps                    # all three should be (healthy)
+docker compose logs -f app           # follow the app's log
+docker compose up -d --build app     # after pulling or changing code: rebuild and restart the app
+docker compose stop                  # stop everything (data is kept)
+```
+
+- Open http://localhost:8000. The containers have `restart: unless-stopped`, so they come back when Docker Desktop starts.
+- The app container uses the same `data/` folder (read-write) and the same `.env` as before; settings saved in the
+  app are written back to `.env`. It reaches the databases by service name (`bolt://neo4j:7687`,
+  `bolt://neo4j-marlink:7687`), set only inside the container, so `.env` keeps its `localhost` values and the
+  native way below still works. Override with `DOCKER_NEO4J_URI` / `DOCKER_NEO4J_URI_MARLINK` (e.g. a remote database).
+- Run CLI commands inside the container, e.g. `docker compose exec app python -m app.cli status`.
+- Use one way at a time: the native server and the container both want port 8000.
+
+### Native Python (for development)
 
 1. **Stop the app** — press `Ctrl-C` in the terminal where `app.cli serve` runs.
 2. **Check the databases** (they keep running in Docker between app restarts):
@@ -37,14 +65,14 @@ To stop everything: `Ctrl-C` for the app, then `docker compose stop`.
 
 ## 2. Back up
 
-1. Stop the app (`Ctrl-C`).
+1. Stop the app: `docker compose stop app` (Docker) or `Ctrl-C` (native).
 2. Run:
    ```bash
    scripts/backup.sh
    ```
    It briefly stops each database for a consistent dump, restarts it, archives `data/`, copies `.env` to
    `env.secret`, and writes `MANIFEST.txt` with checksums. Output: `backups/graphrag-<date>/`.
-3. Start the app again.
+3. Start the app again: `docker compose start app` (Docker) or `.venv/bin/python -m app.cli serve` (native).
 
 `backups/` is git-ignored. `env.secret` holds your API keys and passwords: move it only over a private channel
 (encrypted USB, password manager attachment, `scp` to a machine you control) — never email, chat or git.
@@ -104,5 +132,6 @@ Nothing needs re-embedding: vectors are inside the database dumps, and the embed
 | Neo4j authentication error after restore | the password in `.env` differs from the one the database was created with: restore `env.secret` again, or reset the container (see below) |
 | Port 7474/7687 or 7475/7688 taken | another Neo4j is running: stop it, or change the ports in `docker-compose.yml` and `NEO4J_URI` / the Marlink URI in Settings |
 
-To re-create a database container from scratch (deletes that database — restore a dump afterwards):
+To re-create a database container from scratch (deletes that database — restore a dump afterwards; this example is
+the Marlink one, `marlink-database`):
 `docker compose rm -sf neo4j-marlink && docker volume rm fortisoar-graphrag_neo4j_marlink_data`.

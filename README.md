@@ -32,6 +32,11 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m app.cli serve                                     # web UI + REST API on :8000
 ```
 
+**Or run everything in Docker:** `docker compose up -d` starts three containers — `fortisoar-graph-rag` (the app, http://localhost:8000),
+`fortinet-database` and `marlink-database` —
+using the same `data/` folder and `.env`; `docker compose up -d --build app` after code changes. CLI commands run
+inside the container: `docker compose exec app python -m app.cli status`. Details: OPERATIONS.md.
+
 Open **http://localhost:8000** and sign in. The default login is **admin / admin**; set `APP_USERNAME` and `APP_PASSWORD` in `.env` to change it. `cloud` mode refuses to start with the default. Sessions are held in memory, so restarting the server signs everyone out.
 
 * **Home** shows every playbook as a circular map (zoom with − / slider / + / 1:1 or the mouse wheel, Fit, ⟲ Reset to undo dragged nodes and focus rings, and 🧊 3D for a rotatable 3D view where hovering a node blinks its directly linked nodes, makes their links glow and names only those nodes; the chat graph panel has the same controls): collections in the centre, then playbooks, modules and connectors, animating out ring by ring. Click a node for details and **Ask about this in chat →**, or use **Chat with your playbooks →**. The Home and Chat tabs in the header (and the browser Back button) switch views.

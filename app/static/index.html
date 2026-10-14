@@ -703,6 +703,7 @@
     </table>
 
     <h2 id="q-help">7. Help and contact</h2>
+    <p>The app runs in Docker as <code>fortisoar-graph-rag</code>, with the <code>fortinet-database</code> and <code>marlink-database</code> containers; <code>docker compose up -d</code> starts all three (see the Full reference, Commands).</p>
     <div id="gq-about" class="muted">Loading…</div>
   </article>
   <article class="guide" id="guide" hidden>
@@ -950,7 +951,7 @@
 
     <h3>Workspaces</h3>
     <p>The selector in the header switches between <b>Fortinet</b> (Fortinet's GitHub content) and <b>Marlink</b> (Marlink's own playbooks, docs and designs).
-      They are fully separate: each has its own Neo4j database (Marlink: <code>bolt://localhost:7688</code>, the <code>neo4j-marlink</code> service) and its own
+      They are fully separate: each has its own Neo4j database (Fortinet: the <code>fortinet-database</code> container, <code>bolt://localhost:7687</code>; Marlink: the <code>marlink-database</code> container, <code>bolt://localhost:7688</code>) and its own
       data folder (reviews, uploads, designs, saved searches, synonyms, history). Every tab follows the selection, which is remembered per browser.
       The GitHub page and Fortinet scoring exist only in the Fortinet workspace. Two things cross over on purpose: <b>best-practice rules</b> can be imported
       (Review → Best practices → Import from workspace), and the Develop page in Marlink suggests Marlink's own connectors first and falls back to the
@@ -1008,6 +1009,17 @@ scripts/backup.sh                                            # back up both data
 scripts/restore.sh backups/graphrag-&lt;date&gt;                 # restore a backup (macOS / Linux)
 powershell -ExecutionPolicy Bypass -File scripts\restore.ps1 backups\graphrag-&lt;date&gt;   # restore on Windows</pre>
     <p>On Windows use <code>.venv\Scripts\python.exe</code> instead of <code>.venv/bin/python</code>, and set <code>PYTHONUTF8=1</code> once (see OPERATIONS.md).</p>
+    <h3>Running in Docker</h3>
+    <p>The whole app can run in Docker as three containers: <code>fortisoar-graph-rag</code> (the app, port 8000), <code>fortinet-database</code> and <code>marlink-database</code> (Neo4j).
+      They use the same <code>data/</code> folder and <code>.env</code> as a native run and restart with Docker Desktop. <code>docker compose</code> commands use the service names
+      (<code>app</code>, <code>neo4j</code>, <code>neo4j-marlink</code>); <code>docker</code> commands and Docker Desktop show the container names.</p>
+<pre>docker compose up -d                       # start the app and both databases
+docker compose ps                          # all three (healthy)
+docker logs -f fortisoar-graph-rag         # the app's log (or: docker compose logs -f app)
+docker compose up -d --build app           # rebuild the app after a code change
+docker compose exec app python -m app.cli status   # any CLI command, inside the container
+docker compose stop app                    # stop the app before scripts/backup.sh or a restore
+docker compose stop                        # stop everything (data is kept)</pre>
 
     <h2 id="g-features">17. Every feature, screen by screen</h2>
     <h3>Header (every screen)</h3>

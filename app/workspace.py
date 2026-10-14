@@ -116,7 +116,8 @@ def settings_for(base, ws: str | None = None):
     password = env("NEO4J_PASSWORD") or os.environ.get(w.get("neo4j_password_env") or "") or w.get("neo4j_password") or base.neo4j_password
     terms = tuple(t.strip() for t in (v.get("SCRUB_TERMS") or "").split(",") if t.strip())
     return dataclasses.replace(
-        base, neo4j_uri=v.get("NEO4J_URI") or w.get("neo4j_uri") or base.neo4j_uri, neo4j_user=v.get("NEO4J_USER") or w.get("neo4j_user") or base.neo4j_user,
+        # NEO4J_URI_<COMPANY> in the environment wins: the app container reaches each database by its service name
+        base, neo4j_uri=env("NEO4J_URI") or v.get("NEO4J_URI") or w.get("neo4j_uri") or base.neo4j_uri, neo4j_user=v.get("NEO4J_USER") or w.get("neo4j_user") or base.neo4j_user,
         neo4j_password=password, neo4j_database=v.get("NEO4J_DATABASE") or w.get("neo4j_database") or "neo4j",
         company_name=v.get("COMPANY_NAME") or w.get("label") or base.company_name,
         fortisoar_version=v.get("FORTISOAR_VERSION") or base.fortisoar_version, scrub_terms=terms,
